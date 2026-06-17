@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>财务自由目标规划 Demo</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="app-nav">
+          <div class="brand">
+            <div class="brand-mark">芽</div>
+            <div>
+              <h1>财务自由计划</h1>
+              <p>慢慢来，会变好</p>
+            </div>
+          </div>
+
+          <nav class="steps" aria-label="页面步骤">
+            <a href="#status">现状</a>
+            <a href="#goal">目标</a>
+            <a href="#moneydog">梦想</a>
+            <a href="#property">房产</a>
+            <a href="#child">养娃</a>
+            <a href="#events">事件</a>
+            <a href="#result">结果</a>
+          </nav>
+
+          <div class="nav-note">
+            <strong>今日小提醒</strong>
+            <span>先支付自己，再安排生活。每一笔记录都在帮你靠近自由。</span>
+          </div>
+        </header>
+
+        <section class="content">
+          <header class="topbar">
+            <div class="hero-copy">
+              <h2>早安，愿你今天又离自由更近一步</h2>
+              <p class="hero-subtitle">记录生活、规划未来，把时间留给重要的人。</p>
+            </div>
+            <div class="hero-actions">
+              <a class="secondary-link" href="#moneydog">写日记</a>
+              <a class="secondary-link" href="#goal">看目标</a>
+              <button class="ghost-button" id="resetButton" type="button">恢复示例</button>
+            </div>
+          </header>
+
+          <section class="summary-grid tab-panel" id="result">
+            <div class="metric highlight">
+              <span>预计达成时间</span>
+              <strong id="etaText">--</strong>
+              <small id="etaDate">--</small>
+            </div>
+            <div class="metric">
+              <span>目标缺口</span>
+              <strong id="gapText">--</strong>
+              <small>无负债 + 目标存款</small>
+            </div>
+            <div class="metric">
+              <span>月净结余</span>
+              <strong id="monthlySurplusText">--</strong>
+              <small>收入 - 支出</small>
+            </div>
+            <div class="metric">
+              <span>事件影响</span>
+              <strong id="eventImpactText">--</strong>
+              <small>相对无事件计划</small>
+            </div>
+            <div class="metric">
+              <span>房产总盈亏</span>
+              <strong id="propertyProfitText">--</strong>
+              <small id="propertyBreakEvenText">--</small>
+            </div>
+            <div class="metric">
+              <span>养娃净成本</span>
+              <strong id="childCostText">--</strong>
+              <small id="childStartText">--</small>
+            </div>
+          </section>
+
+          <section class="panel tab-panel" id="trendPanel" data-tab-group="result">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Projection</p>
+                <h3>资产趋势</h3>
+              </div>
+              <div class="legend">
+                <span><i class="dot green"></i>存款</span>
+                <span><i class="dot red"></i>负债</span>
+              </div>
+            </div>
+            <canvas id="trendChart" width="1000" height="320" aria-label="资产趋势图"></canvas>
+          </section>
+
+          <div class="two-column">
+            <section class="panel tab-panel" id="status">
+              <div class="section-title">
+                <div>
+                  <p class="eyebrow">Step 1</p>
+                  <h3>财务现状</h3>
+                </div>
+              </div>
+
+              <form class="form-grid" id="financeForm">
+                <label>
+                  当前存款
+                  <input data-field="cash" type="number" min="0" step="1000" />
+                </label>
+                <label>
+                  投资资产
+                  <input data-field="investments" type="number" min="0" step="1000" />
+                </label>
+                <label>
+                  房贷剩余
+                  <input data-field="mortgageDebt" type="number" min="0" step="1000" />
+                </label>
+                <label>
+                  车贷剩余
+                  <input data-field="carDebt" type="number" min="0" step="1000" />
+                </label>
+                <label>
+                  其他负债
+                  <input data-field="otherDebt" type="number" min="0" step="1000" />
+                </label>
+                <label>
+                  月工资收入
+                  <input data-field="salary" type="number" min="0" step="500" />
+                </label>
+                <label>
+                  月副业收入
+                  <input data-field="sideIncome" type="number" min="0" step="500" />
+                </label>
+                <label>
+                  月生活支出
+                  <input data-field="livingCost" type="number" min="0" step="500" />
+                </label>
+                <label>
+                  月房贷还款
+                  <input data-field="mortgagePayment" type="number" min="0" step="500" />
+                </label>
+                <label>
+                  月车贷还款
+                  <input data-field="carPayment" type="number" min="0" step="500" />
+                </label>
+                <label>
+                  其他固定支出
+                  <input data-field="fixedCost" type="number" min="0" step="500" />
+                </label>
+              </form>
+            </section>
+
+            <section class="panel tab-panel" id="goal">
+              <div class="section-title">
+                <div>
+                  <p class="eyebrow">Step 2</p>
+                  <h3>目标设置</h3>
+                </div>
+              </div>
+
+              <form class="form-grid compact" id="goalForm">
+                <label>
+                  目标名称
+                  <input data-field="goalName" type="text" />
+                </label>
+                <label>
+                  目标存款
+                  <input data-field="targetCash" type="number" min="0" step="10000" />
+                </label>
+                <label>
+                  先支付自己比例 %
+                  <input data-field="payYourselfRate" type="number" min="0" max="90" step="1" />
+                </label>
+                <label>
+                  期望年化收益率
+                  <input data-field="annualReturn" type="number" min="0" max="30" step="0.5" />
+                </label>
+                <label class="check-row">
+                  <input data-field="debtFreeRequired" type="checkbox" />
+                  <span>目标要求无负债</span>
+                </label>
+              </form>
+
+              <div class="insight-box">
+                <span>当前净资产</span>
+                <strong id="netWorthText">--</strong>
+              </div>
+              <div class="insight-box">
+                <span>基础计划</span>
+                <strong id="basePlanText">--</strong>
+              </div>
+              <div class="insight-box">
+                <span>建议先存下</span>
+                <strong id="payYourselfText">--</strong>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel tab-panel" id="moneydog">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Money Dog</p>
+                <h3>梦想相册和成功日记</h3>
+              </div>
+            </div>
+
+            <form class="form-grid" id="moneyDogForm">
+              <label>
+                梦想画面
+                <textarea data-field="dreamScene"></textarea>
+              </label>
+              <label>
+                这个目标为什么重要
+                <textarea data-field="dreamReason"></textarea>
+              </label>
+              <label>
+                本月成功记录
+                <textarea data-field="successNote"></textarea>
+              </label>
+              <label>
+                下一个小行动
+                <textarea data-field="nextAction"></textarea>
+              </label>
+            </form>
+          </section>
+
+          <section class="panel tab-panel" id="property">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Step 3</p>
+                <h3>房产回本预算</h3>
+              </div>
+              <button class="primary-button" id="addPropertyButton" type="button">新增房产</button>
+            </div>
+            <div class="stack-list" id="propertyList"></div>
+          </section>
+
+          <section class="panel tab-panel" id="child">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Step 4</p>
+                <h3>孩子现金流</h3>
+              </div>
+              <button class="primary-button" id="addChildButton" type="button">新增孩子</button>
+            </div>
+            <div class="stack-list" id="childList"></div>
+          </section>
+
+          <section class="panel tab-panel" id="events">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Step 5</p>
+                <h3>真实事件记录</h3>
+              </div>
+              <button class="primary-button" id="addEventButton" type="button">新增事件</button>
+            </div>
+
+            <div class="event-list" id="eventList"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <template id="eventTemplate">
+      <article class="event-card">
+        <div class="event-card-head">
+          <input class="event-name" data-event-field="name" type="text" />
+          <button class="icon-button delete-event" type="button" aria-label="删除事件">×</button>
+        </div>
+        <div class="event-fields">
+          <label>
+            类型
+            <select data-event-field="type">
+              <option value="incomeDelta">收入变化</option>
+              <option value="expenseDelta">支出变化</option>
+              <option value="oneTimeIncome">一次性收入</option>
+              <option value="oneTimeExpense">一次性支出</option>
+              <option value="debtDelta">负债变化</option>
+              <option value="unemployed">失业</option>
+            </select>
+          </label>
+          <label>
+            开始日期
+            <input data-event-field="startDate" type="date" />
+          </label>
+          <label>
+            结束日期
+            <input data-event-field="endDate" type="date" />
+          </label>
+          <label>
+            金额
+            <input data-event-field="amount" type="number" step="500" />
+          </label>
+        </div>
+      </article>
+    </template>
+
+    <template id="propertyTemplate">
+      <article class="entity-card">
+        <div class="entity-head">
+          <input class="entity-name" data-property-field="name" type="text" />
+          <button class="icon-button delete-property" type="button" aria-label="删除房产">×</button>
+        </div>
+        <div class="form-grid">
+          <label>首付日期<input data-property-field="downPaymentDate" type="date" /></label>
+          <label>房子总价<input data-property-field="price" type="number" min="0" step="10000" /></label>
+          <label>首付金额<input data-property-field="downPayment" type="number" min="0" step="10000" /></label>
+          <label>初始贷款金额<input data-property-field="loanInitial" type="number" min="0" step="10000" /></label>
+          <label>装修费用<input data-property-field="renovation" type="number" min="0" step="10000" /></label>
+          <label>税费/水电物业等<input data-property-field="otherCost" type="number" min="0" step="1000" /></label>
+          <label>每月租金收入<input data-property-field="monthlyRent" type="number" min="0" step="500" /></label>
+          <label>每月持有成本<input data-property-field="monthlyCost" type="number" min="0" step="100" /></label>
+          <label>无记录时默认月供<input data-property-field="defaultMonthlyPayment" type="number" min="0" step="500" /></label>
+          <label>默认年利率 %<input data-property-field="defaultAnnualRate" type="number" min="0" max="30" step="0.01" /></label>
+          <label>出售日期<input data-property-field="sellDate" type="date" /></label>
+          <label>预计售价<input data-property-field="sellPrice" type="number" min="0" step="10000" /></label>
+          <label class="check-row"><input data-property-field="includeInPlan" type="checkbox" /><span>接入总目标推算</span></label>
+        </div>
+
+        <div class="record-section">
+          <div class="record-title">
+            <h4>房贷还款记录</h4>
+            <button class="ghost-button add-mortgage-payment" type="button">新增还款</button>
+          </div>
+          <div class="record-list mortgage-payment-list"></div>
+        </div>
+
+        <div class="record-section">
+          <div class="record-title">
+            <h4>提前还款记录</h4>
+            <button class="ghost-button add-prepayment" type="button">新增提前还款</button>
+          </div>
+          <div class="record-list prepayment-list"></div>
+        </div>
+
+        <div class="insight-grid property-summary"></div>
+      </article>
+    </template>
+
+    <template id="childTemplate">
+      <article class="entity-card">
+        <div class="entity-head">
+          <input class="entity-name" data-child-field="name" type="text" />
+          <button class="icon-button delete-child" type="button" aria-label="删除孩子">×</button>
+        </div>
+        <div class="form-grid">
+          <label>开始日期<input data-child-field="startDate" type="date" /></label>
+          <label>产检费用<input data-child-field="prenatalCost" type="number" min="0" step="1000" /></label>
+          <label>生产/住院费用<input data-child-field="birthCost" type="number" min="0" step="1000" /></label>
+          <label>婴儿用品一次性支出<input data-child-field="babySetupCost" type="number" min="0" step="1000" /></label>
+          <label>基础每月支出<input data-child-field="monthlyCost" type="number" min="0" step="500" /></label>
+          <label>教育金每月储备<input data-child-field="educationMonthlySaving" type="number" min="0" step="500" /></label>
+          <label>测算到孩子几岁<input data-child-field="years" type="number" min="1" max="30" step="1" /></label>
+          <label class="check-row"><input data-child-field="includeInPlan" type="checkbox" /><span>接入总目标推算</span></label>
+        </div>
+
+        <div class="record-section">
+          <div class="record-title">
+            <h4>额外收支记录</h4>
+            <button class="ghost-button add-child-cashflow" type="button">新增收支</button>
+          </div>
+          <div class="record-list child-cashflow-list"></div>
+        </div>
+
+        <div class="insight-grid child-summary"></div>
+      </article>
+    </template>
+
+    <template id="mortgagePaymentTemplate">
+      <article class="record-card">
+        <label>
+          还款日期
+          <input data-record-field="date" type="date" />
+        </label>
+        <label>
+          总计还款
+          <input data-record-field="amount" type="number" min="0" step="100" />
+        </label>
+        <label>
+          当日剩余贷款
+          <input data-record-field="remainingLoan" type="number" min="0" step="1000" />
+        </label>
+        <label>
+          当期年利率 %
+          <input data-record-field="annualRate" type="number" min="0" max="30" step="0.01" />
+        </label>
+        <button class="icon-button delete-record" type="button" aria-label="删除还款记录">×</button>
+      </article>
+    </template>
+
+    <template id="prepaymentTemplate">
+      <article class="record-card compact-record">
+        <label>
+          提前还款日期
+          <input data-record-field="date" type="date" />
+        </label>
+        <label>
+          提前还款金额
+          <input data-record-field="amount" type="number" min="0" step="1000" />
+        </label>
+        <button class="icon-button delete-record" type="button" aria-label="删除提前还款记录">×</button>
+      </article>
+    </template>
+
+    <template id="childCashflowTemplate">
+      <article class="record-card child-record">
+        <label>
+          日期
+          <input data-record-field="date" type="date" />
+        </label>
+        <label>
+          方向
+          <select data-record-field="direction">
+            <option value="expense">支出</option>
+            <option value="income">收入</option>
+          </select>
+        </label>
+        <label>
+          类型
+          <select data-record-field="category">
+            <option value="subsidy">育儿补贴</option>
+            <option value="reimbursement">保险/报销</option>
+            <option value="familySupport">亲属支持</option>
+            <option value="medical">生病/医疗</option>
+            <option value="travel">旅游</option>
+            <option value="toy">玩具</option>
+            <option value="education">教育</option>
+            <option value="clothing">衣物</option>
+            <option value="other">其他</option>
+          </select>
+        </label>
+        <label>
+          金额
+          <input data-record-field="amount" type="number" min="0" step="100" />
+        </label>
+        <label>
+          备注
+          <input data-record-field="note" type="text" />
+        </label>
+        <button class="icon-button delete-record" type="button" aria-label="删除养娃支出">×</button>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
