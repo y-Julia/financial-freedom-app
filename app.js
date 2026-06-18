@@ -255,8 +255,25 @@ function normalizeEvent(event, index) {
   };
 }
 
+function cleanInternalNote(note) {
+  const text = String(note || "");
+  return text.includes("旧版") || text.includes("迁移") ? "" : text;
+}
+
+function cleanLoanBalance(value, loanInitial) {
+  if (value === "" || value === null || value === undefined) return "";
+  const amount = toNumber(value);
+  if (amount < 0) return "";
+  return loanInitial > 0 && amount > loanInitial ? "" : amount;
+}
+
+function hasLoanBalanceValue(value, loanInitial) {
+  return cleanLoanBalance(value, loanInitial) !== "";
+}
+
 function normalizeProperty(property, index) {
   const safeProperty = property && typeof property === "object" ? property : {};
+  const loanInitial = toNumber(safeProperty.loanInitial || safeProperty.loanRemaining || Math.max(0, toNumber(safeProperty.price) - toNumber(safeProperty.downPayment)));
   const normalized = createProperty({
     ...safeProperty,
     name: safeProperty.name || `房产 ${index + 1}`,
@@ -264,7 +281,13 @@ function normalizeProperty(property, index) {
       ? safeProperty.mortgagePayments
       : [],
     mortgagePeriods: Array.isArray(safeProperty.mortgagePeriods)
-      ? safeProperty.mortgagePeriods
+      ? safeProperty.mortgagePeriods.map((item) => ({
+          ...item,
+          id: item.id || id(),
+          startBalance: cleanLoanBalance(item.startBalance, loanInitial),
+          endBalance: cleanLoanBalance(item.endBalance, loanInitial),
+          note: cleanInternalNote(item.note),
+        }))
       : Array.isArray(safeProperty.mortgagePayments)
         ? safeProperty.mortgagePayments.map((item) => ({
             id: item.id || id(),
@@ -273,7 +296,7 @@ function normalizeProperty(property, index) {
             monthlyPayment: item.amount,
             annualRate: item.annualRate,
             startBalance: "",
-            endBalance: item.remainingLoan,
+            endBalance: cleanLoanBalance(item.remainingLoan, loanInitial),
             note: "",
           }))
         : safeProperty.defaultMonthlyPayment
@@ -289,7 +312,7 @@ function normalizeProperty(property, index) {
             }]
           : [],
     rentRecords: Array.isArray(safeProperty.rentRecords)
-      ? safeProperty.rentRecords
+      ? safeProperty.rentRecords.map((item) => ({ ...item, id: item.id || id(), note: cleanInternalNote(item.note) }))
       : safeProperty.monthlyRent
         ? [{ id: id(), startMonth: dateToMonthInput(safeProperty.downPaymentDate), endMonth: "", amount: safeProperty.monthlyRent, note: "" }]
         : [],
@@ -519,6 +542,7 @@ function byDate(a, b) {
 function buildPropertyLedger(property, untilDateValue, options = {}) {
   const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
   let balance = property.loanInitial || Math.max(0, property.price - property.downPayment);
+  const initialLoan = balance;
   let totalPaid = 0;
   let totalPrincipal = 0;
   let totalInterest = 0;
@@ -544,8 +568,10 @@ function buildPropertyLedger(property, untilDateValue, options = {}) {
       .at(-1);
 
     if (period) {
-      if (period.startMonth === monthKey && toNumber(period.startBalance) > 0) {
-        balance = toNumber(period.startBalance);
+      const startBalance = cleanLoanBalance(period.startBalance, initialLoan);
+      const endBalance = cleanLoanBalance(period.endBalance, initialLoan);
+      if (period.startMonth === monthKey && hasLoanBalanceValue(period.startBalance, initialLoan)) {
+        balance = toNumber(startBalance);
       }
 
       const payment = toNumber(period.monthlyPayment);
@@ -553,10 +579,10 @@ function buildPropertyLedger(property, untilDateValue, options = {}) {
       let interest = Math.min(payment, balance * (rate / 100 / 12));
       let principal = Math.max(0, payment - interest);
 
-      if (period.endMonth === monthKey && toNumber(period.endBalance) > 0) {
-        principal = Math.max(0, balance - toNumber(period.endBalance));
+      if (period.endMonth === monthKey && hasLoanBalanceValue(period.endBalance, initialLoan)) {
+        principal = Math.max(0, balance - toNumber(endBalance));
         interest = Math.max(0, payment - principal);
-        balance = toNumber(period.endBalance);
+        balance = toNumber(endBalance);
       } else {
         balance = Math.max(0, balance - principal);
       }
@@ -791,15 +817,17 @@ function simulate(source, includeEvents = true) {
           return date && date >= new Date() && monthIndexFromDate(new Date(), item.date) === month;
         });
         if (mortgagePeriod && propertyDebtNow > 0) {
-          if (mortgagePeriod.startMonth === currentMonth && toNumber(mortgagePeriod.startBalance) > 0) {
-            propertyDebtNow = toNumber(mortgagePeriod.startBalance);
+          const startBalance = cleanLoanBalance(mortgagePeriod.startBalance, toNumber(property.loanInitial));
+          const endBalance = cleanLoanBalance(mortgagePeriod.endBalance, toNumber(property.loanInitial));
+          if (mortgagePeriod.startMonth === currentMonth && hasLoanBalanceValue(mortgagePeriod.startBalance, toNumber(property.loanInitial))) {
+            propertyDebtNow = toNumber(startBalance);
           }
           const payment = toNumber(mortgagePeriod.monthlyPayment);
           const interest = propertyDebtNow * (toNumber(mortgagePeriod.annualRate) / 100 / 12);
           let principal = Math.max(0, payment - interest);
-          if (mortgagePeriod.endMonth === currentMonth && toNumber(mortgagePeriod.endBalance) > 0) {
-            principal = Math.max(0, propertyDebtNow - toNumber(mortgagePeriod.endBalance));
-            propertyDebtNow = toNumber(mortgagePeriod.endBalance);
+          if (mortgagePeriod.endMonth === currentMonth && hasLoanBalanceValue(mortgagePeriod.endBalance, toNumber(property.loanInitial))) {
+            principal = Math.max(0, propertyDebtNow - toNumber(endBalance));
+            propertyDebtNow = toNumber(endBalance);
           } else {
             propertyDebtNow = Math.max(0, propertyDebtNow - principal);
           }
@@ -909,7 +937,7 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
       const field = input.dataset.recordField;
       input.value = record[field] ?? "";
       input.addEventListener("input", () => {
-        record[field] = readInputValue(input);
+        record[field] = input.type === "number" && input.value === "" ? "" : readInputValue(input);
         if (validateRanges && (field === "startMonth" || field === "endMonth")) {
           onChange();
           render();
@@ -949,8 +977,16 @@ function renderProperties() {
       else input.value = property[field] ?? "";
       input.addEventListener("input", () => {
         property[field] = readInputValue(input);
+        if (field === "loanInitial") {
+          property.mortgagePeriods = (property.mortgagePeriods || []).map((period) => ({
+            ...period,
+            startBalance: cleanLoanBalance(period.startBalance, property.loanInitial),
+            endBalance: cleanLoanBalance(period.endBalance, property.loanInitial),
+          }));
+        }
         saveState();
-        renderResults();
+        if (field === "loanInitial") render();
+        else renderResults();
       });
     });
     node.querySelector(".delete-property")?.addEventListener("click", () => {
@@ -980,7 +1016,7 @@ function renderProperties() {
         endMonth: startMonth,
         monthlyPayment: 0,
         annualRate: 3,
-        startBalance: buildPropertyLedger(property, new Date()).balance,
+        startBalance: "",
         endBalance: "",
         note: "",
       });
@@ -1227,9 +1263,9 @@ function renderResults() {
       insight("出售时净盈亏", money(item.result.sale.profit)),
       insight("回本时间", Number.isFinite(item.result.breakEvenMonth) ? formatDuration(item.result.breakEvenMonth) : "无法回本"),
       insight("已还本金/利息", `${money(item.result.sale.ledger.totalPrincipal)} / ${money(item.result.sale.ledger.totalInterest)}`),
-      insight("当前估算剩余贷款", money(item.current.balance)),
+      insight("当前估算剩余贷款本金", money(item.current.balance)),
       insight("出售价格", money(item.property.sellPrice)),
-      insight("出售时剩余贷款", money(item.result.sale.remainingLoan)),
+      insight("出售时剩余贷款本金", money(item.result.sale.remainingLoan)),
       insight("出售净到手", money(item.result.sale.saleNetCash)),
       insight("累计租金收入", money(item.result.sale.rentIncome)),
       insight("累计投入", money(item.result.sale.totalOut)),
