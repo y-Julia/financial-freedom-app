@@ -782,8 +782,10 @@ function readInputValue(input) {
 
 function renderRecordList({ container, templateId, records, onChange, onDelete }) {
   const template = document.querySelector(templateId);
+  if (!container || !template) return;
   container.innerHTML = "";
-  records.sort(byDate).forEach((record) => {
+  const safeRecords = Array.isArray(records) ? records : [];
+  safeRecords.sort(byDate).forEach((record) => {
     const node = template.content.firstElementChild.cloneNode(true);
     node.querySelectorAll("[data-record-field]").forEach((input) => {
       const field = input.dataset.recordField;
@@ -793,7 +795,7 @@ function renderRecordList({ container, templateId, records, onChange, onDelete }
         onChange();
       });
     });
-    node.querySelector(".delete-record").addEventListener("click", () => onDelete(record.id));
+    node.querySelector(".delete-record")?.addEventListener("click", () => onDelete(record.id));
     container.appendChild(node);
   });
 }
@@ -805,6 +807,10 @@ function insight(label, value) {
 function renderProperties() {
   const list = document.querySelector("#propertyList");
   const template = document.querySelector("#propertyTemplate");
+  if (!list || !template) return;
+  state.properties = Array.isArray(state.properties)
+    ? state.properties.map((property, index) => normalizeProperty(property, index))
+    : [createProperty()];
   list.innerHTML = "";
   state.properties.forEach((property, index) => {
     if (!property.name) property.name = `房产 ${index + 1}`;
@@ -819,12 +825,13 @@ function renderProperties() {
         renderResults();
       });
     });
-    node.querySelector(".delete-property").addEventListener("click", () => {
+    node.querySelector(".delete-property")?.addEventListener("click", () => {
       state.properties = state.properties.filter((item) => item.id !== property.id);
       saveState();
       render();
     });
-    node.querySelector(".add-rent-record").addEventListener("click", () => {
+    node.querySelector(".add-rent-record")?.addEventListener("click", () => {
+      property.rentRecords = Array.isArray(property.rentRecords) ? property.rentRecords : [];
       property.rentRecords.push({
         id: id(),
         startMonth: dateToMonthInput(new Date()),
@@ -835,7 +842,8 @@ function renderProperties() {
       saveState();
       render();
     });
-    node.querySelector(".add-mortgage-period").addEventListener("click", () => {
+    node.querySelector(".add-mortgage-period")?.addEventListener("click", () => {
+      property.mortgagePeriods = Array.isArray(property.mortgagePeriods) ? property.mortgagePeriods : [];
       property.mortgagePeriods.push({
         id: id(),
         startMonth: dateToMonthInput(new Date()),
@@ -849,7 +857,8 @@ function renderProperties() {
       saveState();
       render();
     });
-    node.querySelector(".add-prepayment").addEventListener("click", () => {
+    node.querySelector(".add-prepayment")?.addEventListener("click", () => {
+      property.prepayments = Array.isArray(property.prepayments) ? property.prepayments : [];
       property.prepayments.push({ id: id(), date: toDateInputValue(new Date()), amount: 10000, note: "" });
       saveState();
       render();
@@ -915,7 +924,8 @@ function renderProperties() {
           insight("累计收入", money(result.sale.totalIn)),
         ]
       : [insight("出售盈亏", "未设置出售假设")];
-    node.querySelector(".property-summary").innerHTML = [...commonInsights, ...saleInsights].join("");
+    const summary = node.querySelector(".property-summary");
+    if (summary) summary.innerHTML = [...commonInsights, ...saleInsights].join("");
     list.appendChild(node);
   });
 }
@@ -1147,6 +1157,7 @@ document.querySelectorAll(".steps a").forEach((link) => {
 window.addEventListener("hashchange", () => activateTab(getActiveTab()));
 
 document.querySelector("#addPropertyButton").addEventListener("click", () => {
+  state.properties = Array.isArray(state.properties) ? state.properties : [];
   state.properties.push(createProperty({ name: `房产 ${state.properties.length + 1}` }));
   saveState();
   render();
