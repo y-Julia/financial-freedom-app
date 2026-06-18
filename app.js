@@ -147,6 +147,8 @@ const MAX_MONTHS = 12 * 80;
 const STORAGE_KEY = "financialFreedomDemo";
 let state = loadState();
 let formBound = false;
+let saveStateTimer = null;
+let renderResultsFrame = null;
 const TAB_IDS = ["status", "goal", "moneydog", "property", "child", "events", "result"];
 
 const numberFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
@@ -273,10 +275,16 @@ function hasLoanBalanceValue(value, loanInitial) {
 
 function normalizeProperty(property, index) {
   const safeProperty = property && typeof property === "object" ? property : {};
-  const loanInitial = toNumber(safeProperty.loanInitial || safeProperty.loanRemaining || Math.max(0, toNumber(safeProperty.price) - toNumber(safeProperty.downPayment)));
+  const computedLoanInitial = Math.max(0, toNumber(safeProperty.price) - toNumber(safeProperty.downPayment));
+  const savedLoanInitial = toNumber(safeProperty.loanInitial || safeProperty.loanRemaining);
+  const loanInitial =
+    computedLoanInitial > 0 && (savedLoanInitial === 0 || savedLoanInitial === 560000 || savedLoanInitial > computedLoanInitial)
+      ? computedLoanInitial
+      : savedLoanInitial || computedLoanInitial;
   const normalized = createProperty({
     ...safeProperty,
     name: safeProperty.name || `房产 ${index + 1}`,
+    loanInitial,
     mortgagePayments: Array.isArray(safeProperty.mortgagePayments)
       ? safeProperty.mortgagePayments
       : [],
@@ -327,6 +335,16 @@ function normalizeProperty(property, index) {
     prepayments: Array.isArray(safeProperty.prepayments) ? safeProperty.prepayments : [],
     salePlanned: Boolean(safeProperty.salePlanned || (safeProperty.sellDate && safeProperty.sellPrice)),
   });
+  normalized.rentRecords = (normalized.rentRecords || []).map((record) => ({
+    ...record,
+    note: cleanInternalNote(record.note),
+  }));
+  normalized.mortgagePeriods = (normalized.mortgagePeriods || []).map((period) => ({
+    ...period,
+    startBalance: cleanLoanBalance(period.startBalance, normalized.loanInitial),
+    endBalance: cleanLoanBalance(period.endBalance, normalized.loanInitial),
+    note: cleanInternalNote(period.note),
+  }));
   return normalized;
 }
 
@@ -343,7 +361,27 @@ function normalizeChild(child, index) {
 }
 
 function saveState() {
+  clearTimeout(saveStateTimer);
+  saveStateTimer = setTimeout(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, 120);
+}
+
+function saveStateNow() {
+  clearTimeout(saveStateTimer);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function scheduleRenderResults() {
+  if (typeof requestAnimationFrame !== "function") {
+    renderResults();
+    return;
+  }
+  if (renderResultsFrame) cancelAnimationFrame(renderResultsFrame);
+  renderResultsFrame = requestAnimationFrame(() => {
+    renderResultsFrame = null;
+    renderResults();
+  });
 }
 
 function toNumber(value) {
@@ -903,7 +941,7 @@ function bindForm() {
             ? input.value
             : toNumber(input.value);
       saveState();
-      render();
+      scheduleRenderResults();
     });
   });
   formBound = true;
@@ -924,7 +962,7 @@ function readInputValue(input) {
   return input.value;
 }
 
-function renderRecordList({ container, templateId, records, onChange, onDelete, validateRanges = false, sortMode = "dateAsc" }) {
+function renderRecordList({ container, templateId, records, onChange, onDelete, validateRanges = false, sortMode = "dateAsc", displayValue }) {
   const template = document.querySelector(templateId);
   if (!container || !template) return;
   container.innerHTML = "";
@@ -935,7 +973,7 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
     const node = template.content.firstElementChild.cloneNode(true);
     node.querySelectorAll("[data-record-field]").forEach((input) => {
       const field = input.dataset.recordField;
-      input.value = record[field] ?? "";
+      input.value = displayValue ? displayValue(record, field) : (record[field] ?? "");
       input.addEventListener("input", () => {
         record[field] = input.type === "number" && input.value === "" ? "" : readInputValue(input);
         if (validateRanges && (field === "startMonth" || field === "endMonth")) {
@@ -986,7 +1024,7 @@ function renderProperties() {
         }
         saveState();
         if (field === "loanInitial") render();
-        else renderResults();
+        else scheduleRenderResults();
       });
     });
     node.querySelector(".delete-property")?.addEventListener("click", () => {
@@ -1033,9 +1071,10 @@ function renderProperties() {
       container: node.querySelector(".rent-record-list"),
       templateId: "#rentRecordTemplate",
       records: property.rentRecords,
+      displayValue: (record, field) => (field === "note" ? cleanInternalNote(record.note) : (record[field] ?? "")),
       onChange: () => {
         saveState();
-        renderResults();
+        scheduleRenderResults();
       },
       onDelete: (recordId) => {
         property.rentRecords = property.rentRecords.filter((item) => item.id !== recordId);
@@ -1049,9 +1088,14 @@ function renderProperties() {
       container: node.querySelector(".mortgage-period-list"),
       templateId: "#mortgagePeriodTemplate",
       records: property.mortgagePeriods,
+      displayValue: (record, field) => {
+        if (field === "note") return cleanInternalNote(record.note);
+        if (field === "startBalance" || field === "endBalance") return cleanLoanBalance(record[field], property.loanInitial);
+        return record[field] ?? "";
+      },
       onChange: () => {
         saveState();
-        renderResults();
+        scheduleRenderResults();
       },
       onDelete: (recordId) => {
         property.mortgagePeriods = property.mortgagePeriods.filter((item) => item.id !== recordId);
@@ -1067,7 +1111,7 @@ function renderProperties() {
       records: property.prepayments,
       onChange: () => {
         saveState();
-        renderResults();
+        scheduleRenderResults();
       },
       onDelete: (recordId) => {
         property.prepayments = property.prepayments.filter((item) => item.id !== recordId);
@@ -1114,7 +1158,7 @@ function renderChildren() {
       input.addEventListener("input", () => {
         child[field] = readInputValue(input);
         saveState();
-        renderResults();
+        scheduleRenderResults();
       });
     });
     node.querySelector(".delete-child").addEventListener("click", () => {
@@ -1133,7 +1177,7 @@ function renderChildren() {
       records: child.cashflows,
       onChange: () => {
         saveState();
-        renderResults();
+        scheduleRenderResults();
       },
       onDelete: (recordId) => {
         child.cashflows = child.cashflows.filter((item) => item.id !== recordId);
@@ -1164,7 +1208,7 @@ function renderEvents() {
       input.addEventListener("input", () => {
         event[field] = readInputValue(input);
         saveState();
-        renderResults();
+        scheduleRenderResults();
       });
     });
     node.querySelector(".delete-event").addEventListener("click", () => {
@@ -1329,13 +1373,13 @@ window.addEventListener("hashchange", () => activateTab(getActiveTab()));
 document.querySelector("#addPropertyButton").addEventListener("click", () => {
   state.properties = Array.isArray(state.properties) ? state.properties : [];
   state.properties.push(createProperty({ name: `房产 ${state.properties.length + 1}` }));
-  saveState();
+  saveStateNow();
   render();
 });
 
 document.querySelector("#addChildButton").addEventListener("click", () => {
   state.children.push(createChild({ name: `孩子 ${state.children.length + 1}` }));
-  saveState();
+  saveStateNow();
   render();
 });
 
@@ -1348,13 +1392,13 @@ document.querySelector("#addEventButton").addEventListener("click", () => {
     endDate: toDateInputValue(new Date()),
     amount: 10000,
   });
-  saveState();
+  saveStateNow();
   render();
 });
 
 document.querySelector("#resetButton").addEventListener("click", () => {
   state = structuredClone(defaultState);
-  saveState();
+  saveStateNow();
   syncForm();
   render();
 });
