@@ -13,14 +13,6 @@ function createProperty(overrides = {}) {
     loanInitial: 560000,
     renovation: 80000,
     purchaseFees: 20000,
-    propertyFeeAmount: 300,
-    propertyFeeFrequency: "monthly",
-    propertyFeePayer: "owner",
-    utilitiesAmount: 0,
-    utilitiesFrequency: "monthly",
-    utilitiesPayer: "tenant",
-    maintenanceMonthly: 0,
-    otherHoldingMonthly: 0,
     salePlanned: false,
     sellDate: "",
     sellPrice: 0,
@@ -33,7 +25,22 @@ function createProperty(overrides = {}) {
         startMonth: "2026-02",
         endMonth: "",
         amount: 2600,
+        propertyFee: 0,
+        utilities: 0,
+        maintenance: 0,
+        otherCost: 0,
         note: "",
+      },
+    ],
+    preRentCostRecords: [
+      {
+        id: id(),
+        startMonth: "2026-01",
+        endMonth: "2026-01",
+        propertyFee: 300,
+        utilities: 0,
+        maintenance: 0,
+        otherCost: 0,
       },
     ],
     mortgagePeriods: [
@@ -177,13 +184,6 @@ function normalizeState(saved) {
     loanInitial: saved.propertyLoanInitial || saved.propertyLoanRemaining,
     renovation: saved.propertyRenovation,
     purchaseFees: saved.propertyOtherCost,
-    propertyFeeAmount: saved.propertyFeeAmount ?? 0,
-    propertyFeeFrequency: saved.propertyFeeFrequency || "monthly",
-    propertyFeePayer: saved.propertyFeePayer || "owner",
-    utilitiesAmount: saved.utilitiesAmount ?? 0,
-    utilitiesFrequency: saved.utilitiesFrequency || "monthly",
-    utilitiesPayer: saved.utilitiesPayer || "tenant",
-    otherHoldingMonthly: saved.propertyMonthlyCost,
     sellDate: saved.propertySellDate,
     sellPrice: saved.propertySellPrice,
     salePlanned: Boolean(saved.propertySellDate && saved.propertySellPrice),
@@ -212,8 +212,15 @@ function normalizeState(saved) {
           }]
         : [],
     rentRecords: saved.propertyMonthlyRent
-      ? [{ id: id(), startMonth: dateToMonthInput(saved.propertyDownPaymentDate), endMonth: "", amount: saved.propertyMonthlyRent, note: "" }]
+      ? [normalizeRentRecord({}, { startMonth: dateToMonthInput(saved.propertyDownPaymentDate), amount: saved.propertyMonthlyRent })]
       : [],
+    preRentCostRecords: buildLegacyPreRentCostRecords({
+      downPaymentDate: saved.propertyDownPaymentDate,
+      propertyFeeAmount: saved.propertyFeeAmount,
+      utilitiesAmount: saved.utilitiesAmount,
+      otherHoldingMonthly: saved.propertyMonthlyCost,
+      usage: saved.propertyUsage,
+    }),
     prepayments: saved.propertyPrepayments || [],
   });
 
@@ -260,6 +267,40 @@ function normalizeEvent(event, index) {
 function cleanInternalNote(note) {
   const text = String(note || "");
   return text.includes("旧版") || text.includes("迁移") ? "" : text;
+}
+
+function normalizeHoldingCostRecord(record = {}, fallback = {}) {
+  return {
+    id: record.id || id(),
+    startMonth: record.startMonth || fallback.startMonth || dateToMonthInput(new Date()),
+    endMonth: record.endMonth || "",
+    propertyFee: record.propertyFee ?? fallback.propertyFee ?? 0,
+    utilities: record.utilities ?? fallback.utilities ?? 0,
+    maintenance: record.maintenance ?? fallback.maintenance ?? 0,
+    otherCost: record.otherCost ?? fallback.otherCost ?? 0,
+  };
+}
+
+function normalizeRentRecord(record = {}, fallback = {}) {
+  return {
+    ...normalizeHoldingCostRecord(record, fallback),
+    amount: record.amount ?? fallback.amount ?? 0,
+    note: cleanInternalNote(record.note),
+  };
+}
+
+function holdingCostFromRecord(record) {
+  return toNumber(record.propertyFee) + toNumber(record.utilities) + toNumber(record.maintenance) + toNumber(record.otherCost);
+}
+
+function buildLegacyPreRentCostRecords(property) {
+  const startMonth = dateToMonthInput(property.downPaymentDate) || dateToMonthInput(new Date());
+  const propertyFee = property.propertyFeeAmount ?? property.propertyFeeMonthly ?? 0;
+  const utilities = property.utilitiesAmount ?? property.utilitiesMonthly ?? 0;
+  const maintenance = property.maintenanceMonthly ?? 0;
+  const otherCost = property.otherHoldingMonthly ?? property.monthlyCost ?? 0;
+  if (toNumber(propertyFee) + toNumber(utilities) + toNumber(maintenance) + toNumber(otherCost) <= 0) return [];
+  return [normalizeHoldingCostRecord({}, { startMonth, propertyFee, utilities, maintenance, otherCost })];
 }
 
 function cleanLoanBalance(value, loanInitial) {
@@ -320,25 +361,27 @@ function normalizeProperty(property, index) {
             }]
           : [],
     rentRecords: Array.isArray(safeProperty.rentRecords)
-      ? safeProperty.rentRecords.map((item) => ({ ...item, id: item.id || id(), note: cleanInternalNote(item.note) }))
+      ? safeProperty.rentRecords.map((item) => normalizeRentRecord(item, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
       : safeProperty.monthlyRent
-        ? [{ id: id(), startMonth: dateToMonthInput(safeProperty.downPaymentDate), endMonth: "", amount: safeProperty.monthlyRent, note: "" }]
+        ? [normalizeRentRecord({}, { startMonth: dateToMonthInput(safeProperty.downPaymentDate), amount: safeProperty.monthlyRent })]
         : [],
+    preRentCostRecords: Array.isArray(safeProperty.preRentCostRecords)
+      ? safeProperty.preRentCostRecords.map((item) => normalizeHoldingCostRecord(item, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
+      : Array.isArray(safeProperty.recurringCostRecords)
+        ? safeProperty.recurringCostRecords.map((item) => normalizeHoldingCostRecord({
+            id: item.id,
+            startMonth: item.startMonth,
+            endMonth: item.endMonth,
+            propertyFee: item.type === "propertyFee" ? item.amount : 0,
+            utilities: item.type === "utilities" ? item.amount : 0,
+          }, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
+        : buildLegacyPreRentCostRecords(safeProperty),
     purchaseFees: safeProperty.purchaseFees ?? safeProperty.otherCost ?? 0,
-    propertyFeeAmount: safeProperty.propertyFeeAmount ?? safeProperty.propertyFeeMonthly ?? 0,
-    propertyFeeFrequency: safeProperty.propertyFeeFrequency || "monthly",
-    propertyFeePayer: safeProperty.propertyFeePayer || "owner",
-    utilitiesAmount: safeProperty.utilitiesAmount ?? safeProperty.utilitiesMonthly ?? 0,
-    utilitiesFrequency: safeProperty.utilitiesFrequency || "monthly",
-    utilitiesPayer: safeProperty.utilitiesPayer || (safeProperty.usage === "rent" ? "tenant" : "owner"),
-    otherHoldingMonthly: safeProperty.otherHoldingMonthly ?? safeProperty.monthlyCost ?? 0,
     prepayments: Array.isArray(safeProperty.prepayments) ? safeProperty.prepayments : [],
     salePlanned: Boolean(safeProperty.salePlanned || (safeProperty.sellDate && safeProperty.sellPrice)),
   });
-  normalized.rentRecords = (normalized.rentRecords || []).map((record) => ({
-    ...record,
-    note: cleanInternalNote(record.note),
-  }));
+  normalized.rentRecords = (normalized.rentRecords || []).map((record) => normalizeRentRecord(record, { startMonth: dateToMonthInput(normalized.downPaymentDate) }));
+  normalized.preRentCostRecords = (normalized.preRentCostRecords || []).map((record) => normalizeHoldingCostRecord(record, { startMonth: dateToMonthInput(normalized.downPaymentDate) }));
   normalized.mortgagePeriods = (normalized.mortgagePeriods || []).map((period) => ({
     ...period,
     startBalance: cleanLoanBalance(period.startBalance, normalized.loanInitial),
@@ -481,6 +524,7 @@ function getRangeValidation(records = []) {
     for (let nextIndex = index + 1; nextIndex < safeRecords.length; nextIndex += 1) {
       const current = safeRecords[index];
       const next = safeRecords[nextIndex];
+      if (current.type && next.type && current.type !== next.type) continue;
       if (rangesOverlap(current, next)) {
         const message = "这个月份已经在另一条区间中，请调整为不重叠的月份";
         if (!errors.has(current.id)) errors.set(current.id, message);
@@ -535,11 +579,11 @@ function ownerPaysRecurringCost(property, payer, monthKey) {
   return payer !== "tenant" || !isRentedMonth(property, monthKey);
 }
 
-function getRecurringCostForMonth(property, { amount, frequency, payer }, monthKey) {
+function getRecurringCostForMonth(property, { amount, frequency, payer, startMonth }, monthKey) {
   if (frequency === "none" || !ownerPaysRecurringCost(property, payer, monthKey)) return 0;
   const value = toNumber(amount);
   if (frequency === "yearly") {
-    const anchorMonth = dateToMonthInput(property.downPaymentDate) || monthKey;
+    const anchorMonth = startMonth || dateToMonthInput(property.downPaymentDate) || monthKey;
     const monthOffset = monthIndexFromMonth(anchorMonth, monthKey);
     return Number.isFinite(monthOffset) && monthOffset >= 0 && monthOffset % 12 === 0 ? value : 0;
   }
@@ -616,14 +660,13 @@ function buildPropertyLedger(property, untilDateValue, options = {}) {
   for (let offset = 0; offset <= totalMonths; offset += 1) {
     const monthDate = addMonths(parseMonth(startMonth), offset);
     const monthKey = monthKeyFromDate(monthDate);
-    const period = mortgagePeriods
-      .filter((item) => monthInRange(monthKey, item.startMonth, item.endMonth))
-      .at(-1);
+    const periodInfo = getMortgagePeriodForMonth(property, monthKey, { projectFuture: Boolean(options.projectFuture) });
+    const period = periodInfo?.period;
 
     if (period) {
       const startBalance = cleanLoanBalance(period.startBalance, initialLoan);
       const endBalance = cleanLoanBalance(period.endBalance, initialLoan);
-      if (period.startMonth === monthKey && hasLoanBalanceValue(period.startBalance, initialLoan)) {
+      if (!periodInfo.isProjected && period.startMonth === monthKey && hasLoanBalanceValue(period.startBalance, initialLoan)) {
         balance = toNumber(startBalance);
       }
 
@@ -632,7 +675,7 @@ function buildPropertyLedger(property, untilDateValue, options = {}) {
       let interest = Math.min(payment, balance * (rate / 100 / 12));
       let principal = Math.max(0, payment - interest);
 
-      if (period.endMonth === monthKey && hasLoanBalanceValue(period.endBalance, initialLoan)) {
+      if (!periodInfo.isProjected && period.endMonth === monthKey && hasLoanBalanceValue(period.endBalance, initialLoan)) {
         principal = Math.max(0, balance - toNumber(endBalance));
         interest = Math.max(0, payment - principal);
         balance = toNumber(endBalance);
@@ -678,21 +721,59 @@ function getComputedPeriodBalance(property, period, field) {
   return Math.round(buildPropertyLedger(property, endDate).balance);
 }
 
-function getMonthlyHoldingCost(property, monthKey = monthKeyFromDate(new Date())) {
-  return (
-    getRecurringCostForMonth(property, {
-      amount: property.propertyFeeAmount,
-      frequency: property.propertyFeeFrequency,
-      payer: property.propertyFeePayer,
-    }, monthKey) +
-    getRecurringCostForMonth(property, {
-      amount: property.utilitiesAmount,
-      frequency: property.utilitiesFrequency,
-      payer: property.utilitiesPayer,
-    }, monthKey) +
-    toNumber(property.maintenanceMonthly) +
-    toNumber(property.otherHoldingMonthly)
+function getMortgagePeriodForMonth(property, monthKey, options = {}) {
+  const periods = sortByStartMonthAsc(getValidRangeRecords(property.mortgagePeriods));
+  const active = periods.filter((period) => monthInRange(monthKey, period.startMonth, period.endMonth)).at(-1);
+  if (active) return { period: active, isProjected: false };
+  if (!options.projectFuture) return null;
+  const current = parseMonth(monthKey);
+  if (!current) return null;
+  const latestPast = periods
+    .filter((period) => {
+      const start = parseMonth(period.startMonth);
+      if (!start || start > current || toNumber(period.monthlyPayment) <= 0) return false;
+      const end = period.endMonth ? parseMonth(period.endMonth) : start;
+      return end && current > end;
+    })
+    .at(-1);
+  return latestPast ? { period: latestPast, isProjected: true } : null;
+}
+
+function getMortgagePeriodBreakdown(property, period) {
+  if (!period?.startMonth) return null;
+  const endMonth = period.endMonth || monthKeyFromDate(new Date());
+  const endDate = parseMonth(endMonth);
+  if (!endDate) return null;
+  const ledger = buildPropertyLedger(property, endDate);
+  const entries = ledger.entries.filter((entry) => {
+    if (entry.kind !== "payment") return false;
+    return monthInRange(dateToMonthInput(entry.date), period.startMonth, endMonth);
+  });
+  if (!entries.length) return null;
+  return entries.reduce(
+    (total, entry) => ({
+      payment: total.payment + toNumber(entry.amount),
+      principal: total.principal + toNumber(entry.principal),
+      interest: total.interest + toNumber(entry.interest),
+    }),
+    { payment: 0, principal: 0, interest: 0 },
   );
+}
+
+function formatMortgagePeriodMeta(property, period) {
+  const breakdown = getMortgagePeriodBreakdown(property, period);
+  if (!breakdown) return "";
+  return `这段累计还款 ${money(breakdown.payment)}，其中本金 ${money(breakdown.principal)}，利息 ${money(breakdown.interest)}`;
+}
+
+function getMonthlyHoldingCost(property, monthKey = monthKeyFromDate(new Date())) {
+  const rentCost = getValidRangeRecords(property.rentRecords)
+    .filter((record) => monthInRange(monthKey, record.startMonth, record.endMonth))
+    .reduce((sum, record) => sum + holdingCostFromRecord(record), 0);
+  if (rentCost > 0 || isRentedMonth(property, monthKey)) return rentCost;
+  return getValidRangeRecords(property.preRentCostRecords)
+    .filter((record) => monthInRange(monthKey, record.startMonth, record.endMonth))
+    .reduce((sum, record) => sum + holdingCostFromRecord(record), 0);
 }
 
 function getHoldingCostTotal(property, months) {
@@ -873,9 +954,8 @@ function simulate(source, includeEvents = true) {
           .filter((record) => monthInRange(currentMonth, record.startMonth, record.endMonth))
           .reduce((sum, record) => sum + toNumber(record.amount), 0);
         expense += getMonthlyHoldingCost(property, currentMonth);
-        const mortgagePeriod = getValidRangeRecords(property.mortgagePeriods)
-          .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
-          .at(-1);
+        const mortgagePeriodInfo = getMortgagePeriodForMonth(property, currentMonth, { projectFuture: true });
+        const mortgagePeriod = mortgagePeriodInfo?.period;
         const recordedPrepayments = (property.prepayments || []).filter((item) => {
           const date = parseDate(item.date);
           return date && date >= new Date() && monthIndexFromDate(new Date(), item.date) === month;
@@ -883,13 +963,13 @@ function simulate(source, includeEvents = true) {
         if (mortgagePeriod && propertyDebtNow > 0) {
           const startBalance = cleanLoanBalance(mortgagePeriod.startBalance, toNumber(property.loanInitial));
           const endBalance = cleanLoanBalance(mortgagePeriod.endBalance, toNumber(property.loanInitial));
-          if (mortgagePeriod.startMonth === currentMonth && hasLoanBalanceValue(mortgagePeriod.startBalance, toNumber(property.loanInitial))) {
+          if (!mortgagePeriodInfo.isProjected && mortgagePeriod.startMonth === currentMonth && hasLoanBalanceValue(mortgagePeriod.startBalance, toNumber(property.loanInitial))) {
             propertyDebtNow = toNumber(startBalance);
           }
           const payment = toNumber(mortgagePeriod.monthlyPayment);
           const interest = propertyDebtNow * (toNumber(mortgagePeriod.annualRate) / 100 / 12);
           let principal = Math.max(0, payment - interest);
-          if (mortgagePeriod.endMonth === currentMonth && hasLoanBalanceValue(mortgagePeriod.endBalance, toNumber(property.loanInitial))) {
+          if (!mortgagePeriodInfo.isProjected && mortgagePeriod.endMonth === currentMonth && hasLoanBalanceValue(mortgagePeriod.endBalance, toNumber(property.loanInitial))) {
             principal = Math.max(0, propertyDebtNow - toNumber(endBalance));
             propertyDebtNow = toNumber(endBalance);
           } else {
@@ -988,7 +1068,7 @@ function readInputValue(input) {
   return input.value;
 }
 
-function renderRecordList({ container, templateId, records, onChange, onDelete, validateRanges = false, sortMode = "dateAsc", displayValue }) {
+function renderRecordList({ container, templateId, records, onChange, onDelete, validateRanges = false, sortMode = "dateAsc", displayValue, renderMeta }) {
   const template = document.querySelector(templateId);
   if (!container || !template) return;
   container.innerHTML = "";
@@ -1017,9 +1097,22 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
         else {
           onChange();
           refreshDisplayedValues(input);
+          updateMeta();
         }
       });
     });
+    const meta = document.createElement("p");
+    const updateMeta = () => {
+      if (!renderMeta) return;
+      const text = renderMeta(record);
+      meta.textContent = text;
+      meta.hidden = !text;
+    };
+    updateMeta();
+    if (renderMeta) {
+      meta.className = "record-meta";
+      node.appendChild(meta);
+    }
     if (rangeErrors.has(record.id)) {
       const error = document.createElement("p");
       error.className = "record-error";
@@ -1048,7 +1141,7 @@ function renderProperties() {
     const node = template.content.firstElementChild.cloneNode(true);
     node.querySelectorAll("[data-property-field]").forEach((input) => {
       const field = input.dataset.propertyField;
-      const saleFields = ["sellDate", "sellPrice", "saleCost", "saleNote"];
+      const saleFields = ["sellDate", "sellPrice", "saleCost"];
       if (input.type === "checkbox") input.checked = Boolean(property[field]);
       else {
         input.disabled = saleFields.includes(field) && !property.salePlanned;
@@ -1060,7 +1153,6 @@ function renderProperties() {
           property.sellDate = "";
           property.sellPrice = 0;
           property.saleCost = 0;
-          property.saleNote = "";
         }
         if (field === "loanInitial") {
           property.mortgagePeriods = (property.mortgagePeriods || []).map((period) => ({
@@ -1087,7 +1179,26 @@ function renderProperties() {
         startMonth,
         endMonth: "",
         amount: 0,
+        propertyFee: 0,
+        utilities: 0,
+        maintenance: 0,
+        otherCost: 0,
         note: "",
+      });
+      saveState();
+      render();
+    });
+    node.querySelector(".add-pre-rent-cost")?.addEventListener("click", () => {
+      property.preRentCostRecords = Array.isArray(property.preRentCostRecords) ? property.preRentCostRecords : [];
+      const startMonth = dateToMonthInput(property.downPaymentDate) || dateToMonthInput(new Date());
+      property.preRentCostRecords.push({
+        id: id(),
+        startMonth,
+        endMonth: startMonth,
+        propertyFee: 0,
+        utilities: 0,
+        maintenance: 0,
+        otherCost: 0,
       });
       saveState();
       render();
@@ -1118,7 +1229,6 @@ function renderProperties() {
       container: node.querySelector(".rent-record-list"),
       templateId: "#rentRecordTemplate",
       records: property.rentRecords,
-      displayValue: (record, field) => (field === "note" ? cleanInternalNote(record.note) : (record[field] ?? "")),
       onChange: () => {
         saveState();
         scheduleRenderResults();
@@ -1132,14 +1242,30 @@ function renderProperties() {
       sortMode: "monthDesc",
     });
     renderRecordList({
+      container: node.querySelector(".pre-rent-cost-list"),
+      templateId: "#preRentCostTemplate",
+      records: property.preRentCostRecords,
+      onChange: () => {
+        saveState();
+        scheduleRenderResults();
+      },
+      onDelete: (recordId) => {
+        property.preRentCostRecords = property.preRentCostRecords.filter((item) => item.id !== recordId);
+        saveState();
+        render();
+      },
+      validateRanges: true,
+      sortMode: "monthDesc",
+    });
+    renderRecordList({
       container: node.querySelector(".mortgage-period-list"),
       templateId: "#mortgagePeriodTemplate",
       records: property.mortgagePeriods,
       displayValue: (record, field) => {
-        if (field === "note") return cleanInternalNote(record.note);
         if (field === "startBalance" || field === "endBalance") return getComputedPeriodBalance(property, record, field);
         return record[field] ?? "";
       },
+      renderMeta: (record) => formatMortgagePeriodMeta(property, record),
       onChange: () => {
         saveState();
         scheduleRenderResults();
@@ -1168,10 +1294,13 @@ function renderProperties() {
     });
     const result = calculateProperty(property);
     const current = buildPropertyLedger(property, new Date());
+    const rentIncomeLabel = result.sale.saleEnabled
+      ? "累计租金收入（截至出售月，含出售当月）"
+      : "累计租金收入（截至当前月，含本月）";
     const commonInsights = [
       insight("当前估算剩余贷款本金", money(current.balance)),
-      insight("已还本金/利息", `${money(result.sale.ledger.totalPrincipal)} / ${money(result.sale.ledger.totalInterest)}`),
-      insight("累计租金收入", money(result.sale.rentIncome)),
+      insight("累计已还本金 / 累计已还利息", `${money(result.sale.ledger.totalPrincipal)} / ${money(result.sale.ledger.totalInterest)}`),
+      insight(rentIncomeLabel, money(result.sale.rentIncome)),
       insight("累计投入", money(result.sale.totalOut)),
       insight("当前房产现金流净额", money(result.sale.cashflowNet)),
     ];
@@ -1351,10 +1480,13 @@ function renderResults() {
   document.querySelectorAll(".property-summary").forEach((summary, index) => {
     const item = propertyAgg.snapshots[index];
     if (!item) return;
+    const rentIncomeLabel = item.result.sale.saleEnabled
+      ? "累计租金收入（截至出售月，含出售当月）"
+      : "累计租金收入（截至当前月，含本月）";
     const commonInsights = [
-      insight("已还本金/利息", `${money(item.result.sale.ledger.totalPrincipal)} / ${money(item.result.sale.ledger.totalInterest)}`),
+      insight("累计已还本金 / 累计已还利息", `${money(item.result.sale.ledger.totalPrincipal)} / ${money(item.result.sale.ledger.totalInterest)}`),
       insight("当前估算剩余贷款本金", money(item.current.balance)),
-      insight("累计租金收入", money(item.result.sale.rentIncome)),
+      insight(rentIncomeLabel, money(item.result.sale.rentIncome)),
       insight("累计投入", money(item.result.sale.totalOut)),
       insight("当前房产现金流净额", money(item.result.sale.cashflowNet)),
     ];

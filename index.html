@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>财务自由目标规划 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260618-6" />
+    <link rel="stylesheet" href="styles.css?v=20260618-9" />
   </head>
   <body>
     <main class="app-shell">
@@ -317,8 +317,6 @@
           <label>初始贷款金额<input data-property-field="loanInitial" type="number" min="0" step="10000" /></label>
           <label>装修费用<input data-property-field="renovation" type="number" min="0" step="10000" /></label>
           <label>契税/中介/购房杂费<input data-property-field="purchaseFees" type="number" min="0" step="1000" /></label>
-          <label>每月维修维护<input data-property-field="maintenanceMonthly" type="number" min="0" step="100" /></label>
-          <label>其他每月持有支出<input data-property-field="otherHoldingMonthly" type="number" min="0" step="100" /></label>
           <label class="check-row"><input data-property-field="includeInPlan" type="checkbox" /><span>接入总目标推算</span></label>
         </div>
 
@@ -332,10 +330,10 @@
 
         <div class="record-section">
           <div class="record-title">
-            <h4>物业/水电燃气支出区间</h4>
-            <button class="ghost-button add-cost-record" type="button">新增持有成本</button>
+            <h4>出租前持有支出</h4>
+            <button class="ghost-button add-pre-rent-cost" type="button">新增出租前支出</button>
           </div>
-          <div class="record-list cost-record-list"></div>
+          <div class="record-list pre-rent-cost-list"></div>
         </div>
 
         <div class="record-section">
@@ -400,41 +398,27 @@
     </template>
 
     <template id="rentRecordTemplate">
-      <article class="record-card">
+      <article class="record-card rent-record">
         <label>开始月份<input data-record-field="startMonth" type="month" /></label>
         <label>结束月份<input data-record-field="endMonth" type="month" /></label>
         <label>每月租金<input data-record-field="amount" type="number" min="0" step="100" /></label>
+        <label>每月物业<input data-record-field="propertyFee" type="number" min="0" step="100" /></label>
+        <label>每月水电燃气<input data-record-field="utilities" type="number" min="0" step="100" /></label>
+        <label>每月维修<input data-record-field="maintenance" type="number" min="0" step="100" /></label>
+        <label>其他每月支出<input data-record-field="otherCost" type="number" min="0" step="100" /></label>
         <button class="icon-button delete-record" type="button" aria-label="删除租金记录">×</button>
       </article>
     </template>
 
-    <template id="costRecordTemplate">
-      <article class="record-card cost-record">
-        <label>
-          类型
-          <select data-record-field="type">
-            <option value="propertyFee">物业费</option>
-            <option value="utilities">水电燃气</option>
-          </select>
-        </label>
+    <template id="preRentCostTemplate">
+      <article class="record-card pre-rent-cost-record">
         <label>开始月份<input data-record-field="startMonth" type="month" /></label>
         <label>结束月份<input data-record-field="endMonth" type="month" /></label>
-        <label>金额<input data-record-field="amount" type="number" min="0" step="100" /></label>
-        <label>
-          缴费方式
-          <select data-record-field="frequency">
-            <option value="monthly">按月</option>
-            <option value="yearly">按年</option>
-          </select>
-        </label>
-        <label>
-          支付方
-          <select data-record-field="payer">
-            <option value="owner">我支付</option>
-            <option value="tenant">租客支付</option>
-          </select>
-        </label>
-        <button class="icon-button delete-record" type="button" aria-label="删除持有成本">×</button>
+        <label>每月物业<input data-record-field="propertyFee" type="number" min="0" step="100" /></label>
+        <label>每月水电燃气<input data-record-field="utilities" type="number" min="0" step="100" /></label>
+        <label>每月维修<input data-record-field="maintenance" type="number" min="0" step="100" /></label>
+        <label>其他每月支出<input data-record-field="otherCost" type="number" min="0" step="100" /></label>
+        <button class="icon-button delete-record" type="button" aria-label="删除出租前支出">×</button>
       </article>
     </template>
 
@@ -521,6 +505,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260618-6"></script>
+    <script src="app.js?v=20260618-9"></script>
   </body>
 </html>

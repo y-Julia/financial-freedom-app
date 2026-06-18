@@ -514,7 +514,7 @@ textarea:focus {
 
 .record-card {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 180px)) 36px;
+  grid-template-columns: repeat(3, minmax(120px, 170px)) 32px;
   gap: 10px;
   align-items: end;
   justify-content: start;
@@ -522,7 +522,31 @@ textarea:focus {
 }
 
 .compact-record {
-  grid-template-columns: 180px 140px minmax(120px, 180px) 36px;
+  grid-template-columns: 160px 140px 32px;
+}
+
+.rent-record,
+.pre-rent-cost-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.rent-record label,
+.pre-rent-cost-record label {
+  flex: 0 0 120px;
+}
+
+.rent-record label:nth-of-type(1),
+.rent-record label:nth-of-type(2),
+.pre-rent-cost-record label:nth-of-type(1),
+.pre-rent-cost-record label:nth-of-type(2) {
+  flex-basis: 150px;
+}
+
+.rent-record .delete-record,
+.pre-rent-cost-record .delete-record {
+  flex: 0 0 32px;
 }
 
 .child-record {
@@ -549,12 +573,8 @@ textarea:focus {
   flex-basis: 220px;
 }
 
-.mortgage-period-record label:nth-of-type(7) {
-  flex-basis: 180px;
-}
-
 .mortgage-period-record .delete-record {
-  flex: 0 0 36px;
+  flex: 0 0 32px;
 }
 
 .record-card .delete-record {
@@ -568,6 +588,14 @@ textarea:focus {
   grid-column: 1 / -1;
   margin: -2px 0 0;
   color: #b94b48;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.record-meta {
+  flex: 1 0 100%;
+  margin: -2px 0 0;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -636,11 +664,15 @@ textarea:focus {
   .record-card,
   .compact-record,
   .child-record,
-  .mortgage-period-record {
+  .mortgage-period-record,
+  .rent-record,
+  .pre-rent-cost-record {
     grid-template-columns: 1fr;
   }
 
-  .mortgage-period-record {
+  .mortgage-period-record,
+  .rent-record,
+  .pre-rent-cost-record {
     align-items: stretch;
     flex-direction: column;
   }
@@ -650,8 +682,11 @@ textarea:focus {
   .mortgage-period-record label:nth-of-type(4),
   .mortgage-period-record label:nth-of-type(5),
   .mortgage-period-record label:nth-of-type(6),
-  .mortgage-period-record label:nth-of-type(7),
-  .mortgage-period-record .delete-record {
+  .mortgage-period-record .delete-record,
+  .rent-record label,
+  .rent-record .delete-record,
+  .pre-rent-cost-record label,
+  .pre-rent-cost-record .delete-record {
     flex-basis: auto;
   }
 
