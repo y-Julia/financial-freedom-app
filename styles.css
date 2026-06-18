@@ -531,6 +531,14 @@ textarea:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr)) 36px;
 }
 
+.record-error {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: #b94b48;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .icon-button {
   width: 36px;
   padding: 0;
