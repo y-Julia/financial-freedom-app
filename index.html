@@ -303,27 +303,41 @@
           <button class="icon-button delete-property" type="button" aria-label="删除房产">×</button>
         </div>
         <div class="form-grid">
-          <label>首付日期<input data-property-field="downPaymentDate" type="date" /></label>
+          <label>房产用途
+            <select data-property-field="usage">
+              <option value="selfUse">自住</option>
+              <option value="rent">出租</option>
+              <option value="mixed">自住 + 出租</option>
+              <option value="other">其他</option>
+            </select>
+          </label>
+          <label>购买/首付日期<input data-property-field="downPaymentDate" type="date" /></label>
           <label>房子总价<input data-property-field="price" type="number" min="0" step="10000" /></label>
           <label>首付金额<input data-property-field="downPayment" type="number" min="0" step="10000" /></label>
           <label>初始贷款金额<input data-property-field="loanInitial" type="number" min="0" step="10000" /></label>
           <label>装修费用<input data-property-field="renovation" type="number" min="0" step="10000" /></label>
-          <label>税费/水电物业等<input data-property-field="otherCost" type="number" min="0" step="1000" /></label>
-          <label>每月租金收入<input data-property-field="monthlyRent" type="number" min="0" step="500" /></label>
-          <label>每月持有成本<input data-property-field="monthlyCost" type="number" min="0" step="100" /></label>
-          <label>无记录时默认月供<input data-property-field="defaultMonthlyPayment" type="number" min="0" step="500" /></label>
-          <label>默认年利率 %<input data-property-field="defaultAnnualRate" type="number" min="0" max="30" step="0.01" /></label>
-          <label>出售日期<input data-property-field="sellDate" type="date" /></label>
-          <label>预计售价<input data-property-field="sellPrice" type="number" min="0" step="10000" /></label>
+          <label>契税/中介/购房杂费<input data-property-field="purchaseFees" type="number" min="0" step="1000" /></label>
+          <label>每月物业费<input data-property-field="propertyFeeMonthly" type="number" min="0" step="100" /></label>
+          <label>每月水电燃气<input data-property-field="utilitiesMonthly" type="number" min="0" step="100" /></label>
+          <label>每月维修维护<input data-property-field="maintenanceMonthly" type="number" min="0" step="100" /></label>
+          <label>其他每月持有支出<input data-property-field="otherHoldingMonthly" type="number" min="0" step="100" /></label>
           <label class="check-row"><input data-property-field="includeInPlan" type="checkbox" /><span>接入总目标推算</span></label>
         </div>
 
         <div class="record-section">
           <div class="record-title">
-            <h4>房贷还款记录</h4>
-            <button class="ghost-button add-mortgage-payment" type="button">新增还款</button>
+            <h4>租金收入区间</h4>
+            <button class="ghost-button add-rent-record" type="button">新增租金</button>
           </div>
-          <div class="record-list mortgage-payment-list"></div>
+          <div class="record-list rent-record-list"></div>
+        </div>
+
+        <div class="record-section">
+          <div class="record-title">
+            <h4>房贷还款区间</h4>
+            <button class="ghost-button add-mortgage-period" type="button">新增还款区间</button>
+          </div>
+          <div class="record-list mortgage-period-list"></div>
         </div>
 
         <div class="record-section">
@@ -332,6 +346,19 @@
             <button class="ghost-button add-prepayment" type="button">新增提前还款</button>
           </div>
           <div class="record-list prepayment-list"></div>
+        </div>
+
+        <div class="record-section sale-section">
+          <div class="record-title">
+            <h4>出售假设，可不填写</h4>
+          </div>
+          <div class="form-grid">
+            <label class="check-row"><input data-property-field="salePlanned" type="checkbox" /><span>计划出售/做出售测算</span></label>
+            <label>预计出售日期<input data-property-field="sellDate" type="date" /></label>
+            <label>预计售价<input data-property-field="sellPrice" type="number" min="0" step="10000" /></label>
+            <label>出售税费/中介费<input data-property-field="saleCost" type="number" min="0" step="1000" /></label>
+            <label>出售备注<input data-property-field="saleNote" type="text" /></label>
+          </div>
         </div>
 
         <div class="insight-grid property-summary"></div>
@@ -367,25 +394,47 @@
       </article>
     </template>
 
-    <template id="mortgagePaymentTemplate">
+    <template id="rentRecordTemplate">
       <article class="record-card">
+        <label>开始月份<input data-record-field="startMonth" type="month" /></label>
+        <label>结束月份<input data-record-field="endMonth" type="month" /></label>
+        <label>每月租金<input data-record-field="amount" type="number" min="0" step="100" /></label>
+        <label>备注<input data-record-field="note" type="text" /></label>
+        <button class="icon-button delete-record" type="button" aria-label="删除租金记录">×</button>
+      </article>
+    </template>
+
+    <template id="mortgagePeriodTemplate">
+      <article class="record-card mortgage-period-record">
         <label>
-          还款日期
-          <input data-record-field="date" type="date" />
+          开始月份
+          <input data-record-field="startMonth" type="month" />
         </label>
         <label>
-          总计还款
-          <input data-record-field="amount" type="number" min="0" step="100" />
+          结束月份
+          <input data-record-field="endMonth" type="month" />
         </label>
         <label>
-          当日剩余贷款
-          <input data-record-field="remainingLoan" type="number" min="0" step="1000" />
+          每月还款
+          <input data-record-field="monthlyPayment" type="number" min="0" step="100" />
         </label>
         <label>
-          当期年利率 %
+          年利率 %
           <input data-record-field="annualRate" type="number" min="0" max="30" step="0.01" />
         </label>
-        <button class="icon-button delete-record" type="button" aria-label="删除还款记录">×</button>
+        <label>
+          期初剩余贷款
+          <input data-record-field="startBalance" type="number" min="0" step="1000" />
+        </label>
+        <label>
+          期末剩余贷款
+          <input data-record-field="endBalance" type="number" min="0" step="1000" />
+        </label>
+        <label>
+          备注
+          <input data-record-field="note" type="text" />
+        </label>
+        <button class="icon-button delete-record" type="button" aria-label="删除还款区间">×</button>
       </article>
     </template>
 
@@ -398,6 +447,10 @@
         <label>
           提前还款金额
           <input data-record-field="amount" type="number" min="0" step="1000" />
+        </label>
+        <label>
+          备注
+          <input data-record-field="note" type="text" />
         </label>
         <button class="icon-button delete-record" type="button" aria-label="删除提前还款记录">×</button>
       </article>

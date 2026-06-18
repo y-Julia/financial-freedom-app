@@ -527,6 +527,10 @@ textarea:focus {
   grid-template-columns: repeat(4, minmax(0, 1fr)) 36px;
 }
 
+.mortgage-period-record {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 36px;
+}
+
 .icon-button {
   width: 36px;
   padding: 0;
@@ -590,7 +594,8 @@ textarea:focus {
   .event-fields,
   .record-card,
   .compact-record,
-  .child-record {
+  .child-record,
+  .mortgage-period-record {
     grid-template-columns: 1fr;
   }
 
