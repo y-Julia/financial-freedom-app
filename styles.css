@@ -516,6 +516,7 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 180px)) 36px;
   gap: 10px;
+  align-items: end;
   justify-content: start;
   box-shadow: none;
 }
@@ -554,6 +555,13 @@ textarea:focus {
 
 .mortgage-period-record .delete-record {
   flex: 0 0 36px;
+}
+
+.record-card .delete-record {
+  align-self: end;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
 }
 
 .record-error {

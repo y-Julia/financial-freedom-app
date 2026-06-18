@@ -148,7 +148,7 @@ const STORAGE_KEY = "financialFreedomDemo";
 let state = loadState();
 let formBound = false;
 let saveStateTimer = null;
-let renderResultsFrame = null;
+let renderResultsTimer = null;
 const TAB_IDS = ["status", "goal", "moneydog", "property", "child", "events", "result"];
 
 const numberFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
@@ -373,15 +373,11 @@ function saveStateNow() {
 }
 
 function scheduleRenderResults() {
-  if (typeof requestAnimationFrame !== "function") {
+  clearTimeout(renderResultsTimer);
+  renderResultsTimer = setTimeout(() => {
+    renderResultsTimer = null;
     renderResults();
-    return;
-  }
-  if (renderResultsFrame) cancelAnimationFrame(renderResultsFrame);
-  renderResultsFrame = requestAnimationFrame(() => {
-    renderResultsFrame = null;
-    renderResults();
-  });
+  }, 160);
 }
 
 function toNumber(value) {
@@ -531,6 +527,25 @@ function getRecurringCostMonthly({ amount, frequency, payer }) {
   return frequency === "yearly" ? value / 12 : value;
 }
 
+function isRentedMonth(property, monthKey) {
+  return getValidRangeRecords(property.rentRecords).some((record) => monthInRange(monthKey, record.startMonth, record.endMonth));
+}
+
+function ownerPaysRecurringCost(property, payer, monthKey) {
+  return payer !== "tenant" || !isRentedMonth(property, monthKey);
+}
+
+function getRecurringCostForMonth(property, { amount, frequency, payer }, monthKey) {
+  if (frequency === "none" || !ownerPaysRecurringCost(property, payer, monthKey)) return 0;
+  const value = toNumber(amount);
+  if (frequency === "yearly") {
+    const anchorMonth = dateToMonthInput(property.downPaymentDate) || monthKey;
+    const monthOffset = monthIndexFromMonth(anchorMonth, monthKey);
+    return Number.isFinite(monthOffset) && monthOffset >= 0 && monthOffset % 12 === 0 ? value : 0;
+  }
+  return value;
+}
+
 function dateFromMonthOffset(startDate, offset) {
   const base = typeof startDate === "string" ? parseDate(startDate) : new Date(startDate);
   if (!base || Number.isNaN(base.getTime())) return "";
@@ -645,37 +660,48 @@ function buildPropertyLedger(property, untilDateValue, options = {}) {
   return { balance, totalPaid, totalPrincipal, totalInterest, entries };
 }
 
-function getMonthlyHoldingCost(property) {
+function getComputedPeriodBalance(property, period, field) {
+  if (!period?.startMonth) return "";
+  const existing = cleanLoanBalance(period[field], property.loanInitial);
+  if (existing !== "") return existing;
+  if (field === "startBalance") {
+    const start = parseMonth(period.startMonth);
+    if (!start) return "";
+    const previousMonth = addMonths(start, -1);
+    const downPaymentMonth = parseMonth(dateToMonthInput(property.downPaymentDate));
+    if (!downPaymentMonth || previousMonth < downPaymentMonth) return toNumber(property.loanInitial);
+    return Math.round(buildPropertyLedger(property, previousMonth).balance);
+  }
+  const endMonth = period.endMonth || period.startMonth;
+  const endDate = parseMonth(endMonth);
+  if (!endDate) return "";
+  return Math.round(buildPropertyLedger(property, endDate).balance);
+}
+
+function getMonthlyHoldingCost(property, monthKey = monthKeyFromDate(new Date())) {
   return (
-    getRecurringCostMonthly({
+    getRecurringCostForMonth(property, {
       amount: property.propertyFeeAmount,
       frequency: property.propertyFeeFrequency,
       payer: property.propertyFeePayer,
-    }) +
-    getRecurringCostMonthly({
+    }, monthKey) +
+    getRecurringCostForMonth(property, {
       amount: property.utilitiesAmount,
       frequency: property.utilitiesFrequency,
       payer: property.utilitiesPayer,
-    }) +
+    }, monthKey) +
     toNumber(property.maintenanceMonthly) +
     toNumber(property.otherHoldingMonthly)
   );
 }
 
 function getHoldingCostTotal(property, months) {
-  return (
-    getRecurringCostTotal({
-      amount: property.propertyFeeAmount,
-      frequency: property.propertyFeeFrequency,
-      payer: property.propertyFeePayer,
-    }, months) +
-    getRecurringCostTotal({
-      amount: property.utilitiesAmount,
-      frequency: property.utilitiesFrequency,
-      payer: property.utilitiesPayer,
-    }, months) +
-    (toNumber(property.maintenanceMonthly) + toNumber(property.otherHoldingMonthly)) * months
-  );
+  const startMonth = dateToMonthInput(property.downPaymentDate) || monthKeyFromDate(new Date());
+  let total = 0;
+  for (let offset = 0; offset < months; offset += 1) {
+    total += getMonthlyHoldingCost(property, monthKeyFromDate(addMonths(parseMonth(startMonth), offset)));
+  }
+  return total;
 }
 
 function sumRentIncome(property, untilDateValue) {
@@ -798,7 +824,7 @@ function getTotals(source) {
     const mortgage = getValidRangeRecords(property.mortgagePeriods)
       .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
       .reduce((periodSum, period) => periodSum + toNumber(period.monthlyPayment), 0);
-    return sum + mortgage + getMonthlyHoldingCost(property);
+    return sum + mortgage + getMonthlyHoldingCost(property, currentMonth);
   }, 0);
   const childExpense = source.children.reduce((sum, child) => {
     return sum + (child.includeInPlan ? child.monthlyCost + child.educationMonthlySaving : 0);
@@ -846,7 +872,7 @@ function simulate(source, includeEvents = true) {
         income += getValidRangeRecords(property.rentRecords)
           .filter((record) => monthInRange(currentMonth, record.startMonth, record.endMonth))
           .reduce((sum, record) => sum + toNumber(record.amount), 0);
-        expense += getMonthlyHoldingCost(property);
+        expense += getMonthlyHoldingCost(property, currentMonth);
         const mortgagePeriod = getValidRangeRecords(property.mortgagePeriods)
           .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
           .at(-1);
@@ -971,7 +997,15 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
   const sortedRecords = sortMode === "monthDesc" ? sortByStartMonthDesc(safeRecords) : [...safeRecords].sort(byDate);
   sortedRecords.forEach((record) => {
     const node = template.content.firstElementChild.cloneNode(true);
-    node.querySelectorAll("[data-record-field]").forEach((input) => {
+    const recordInputs = [...node.querySelectorAll("[data-record-field]")];
+    const refreshDisplayedValues = (skipInput) => {
+      if (!displayValue) return;
+      recordInputs.forEach((target) => {
+        if (target === skipInput) return;
+        target.value = displayValue(record, target.dataset.recordField);
+      });
+    };
+    recordInputs.forEach((input) => {
       const field = input.dataset.recordField;
       input.value = displayValue ? displayValue(record, field) : (record[field] ?? "");
       input.addEventListener("input", () => {
@@ -980,7 +1014,10 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
           onChange();
           render();
         }
-        else onChange();
+        else {
+          onChange();
+          refreshDisplayedValues(input);
+        }
       });
     });
     if (rangeErrors.has(record.id)) {
@@ -1011,10 +1048,20 @@ function renderProperties() {
     const node = template.content.firstElementChild.cloneNode(true);
     node.querySelectorAll("[data-property-field]").forEach((input) => {
       const field = input.dataset.propertyField;
+      const saleFields = ["sellDate", "sellPrice", "saleCost", "saleNote"];
       if (input.type === "checkbox") input.checked = Boolean(property[field]);
-      else input.value = property[field] ?? "";
+      else {
+        input.disabled = saleFields.includes(field) && !property.salePlanned;
+        input.value = input.disabled ? "" : (property[field] ?? "");
+      }
       input.addEventListener("input", () => {
         property[field] = readInputValue(input);
+        if (field === "salePlanned" && !property.salePlanned) {
+          property.sellDate = "";
+          property.sellPrice = 0;
+          property.saleCost = 0;
+          property.saleNote = "";
+        }
         if (field === "loanInitial") {
           property.mortgagePeriods = (property.mortgagePeriods || []).map((period) => ({
             ...period,
@@ -1023,7 +1070,7 @@ function renderProperties() {
           }));
         }
         saveState();
-        if (field === "loanInitial") render();
+        if (field === "loanInitial" || field === "salePlanned") render();
         else scheduleRenderResults();
       });
     });
@@ -1090,7 +1137,7 @@ function renderProperties() {
       records: property.mortgagePeriods,
       displayValue: (record, field) => {
         if (field === "note") return cleanInternalNote(record.note);
-        if (field === "startBalance" || field === "endBalance") return cleanLoanBalance(record[field], property.loanInitial);
+        if (field === "startBalance" || field === "endBalance") return getComputedPeriodBalance(property, record, field);
         return record[field] ?? "";
       },
       onChange: () => {
@@ -1222,6 +1269,7 @@ function renderEvents() {
 
 function drawChart(history) {
   const canvas = document.querySelector("#trendChart");
+  if (!canvas || canvas.closest(".tab-panel")?.hidden) return;
   const context = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
@@ -1303,18 +1351,24 @@ function renderResults() {
   document.querySelectorAll(".property-summary").forEach((summary, index) => {
     const item = propertyAgg.snapshots[index];
     if (!item) return;
-    summary.innerHTML = [
-      insight("出售时净盈亏", money(item.result.sale.profit)),
-      insight("回本时间", Number.isFinite(item.result.breakEvenMonth) ? formatDuration(item.result.breakEvenMonth) : "无法回本"),
+    const commonInsights = [
       insight("已还本金/利息", `${money(item.result.sale.ledger.totalPrincipal)} / ${money(item.result.sale.ledger.totalInterest)}`),
       insight("当前估算剩余贷款本金", money(item.current.balance)),
-      insight("出售价格", money(item.property.sellPrice)),
-      insight("出售时剩余贷款本金", money(item.result.sale.remainingLoan)),
-      insight("出售净到手", money(item.result.sale.saleNetCash)),
       insight("累计租金收入", money(item.result.sale.rentIncome)),
       insight("累计投入", money(item.result.sale.totalOut)),
-      insight("累计收入", money(item.result.sale.totalIn)),
-    ].join("");
+      insight("当前房产现金流净额", money(item.result.sale.cashflowNet)),
+    ];
+    const saleInsights = item.result.sale.saleEnabled
+      ? [
+          insight("出售时净盈亏", money(item.result.sale.profit)),
+          insight("回本时间", Number.isFinite(item.result.breakEvenMonth) ? formatDuration(item.result.breakEvenMonth) : "无法回本"),
+          insight("出售价格", money(item.property.sellPrice)),
+          insight("出售时剩余贷款本金", money(item.result.sale.remainingLoan)),
+          insight("出售净到手", money(item.result.sale.saleNetCash)),
+          insight("累计收入", money(item.result.sale.totalIn)),
+        ]
+      : [insight("出售盈亏", "未设置出售假设")];
+    summary.innerHTML = [...commonInsights, ...saleInsights].join("");
   });
 
   document.querySelectorAll(".child-summary").forEach((summary, index) => {
