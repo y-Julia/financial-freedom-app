@@ -900,13 +900,20 @@ function getTotals(source) {
       .reduce((recordSum, record) => recordSum + toNumber(record.amount), 0);
     return sum + rent;
   }, 0);
-  const propertyExpense = source.properties.reduce((sum, property) => {
-    if (!property.includeInPlan) return sum;
-    const mortgage = getValidRangeRecords(property.mortgagePeriods)
-      .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
-      .reduce((periodSum, period) => periodSum + toNumber(period.monthlyPayment), 0);
-    return sum + mortgage + getMonthlyHoldingCost(property, currentMonth);
-  }, 0);
+  const propertyExpenseBreakdown = source.properties.reduce(
+    (totals, property) => {
+      if (!property.includeInPlan) return totals;
+      const mortgage = getValidRangeRecords(property.mortgagePeriods)
+        .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
+        .reduce((periodSum, period) => periodSum + toNumber(period.monthlyPayment), 0);
+      const holding = getMonthlyHoldingCost(property, currentMonth);
+      totals.mortgage += mortgage;
+      totals.holding += holding;
+      return totals;
+    },
+    { mortgage: 0, holding: 0 },
+  );
+  const propertyExpense = propertyExpenseBreakdown.mortgage + propertyExpenseBreakdown.holding;
   const childExpense = source.children.reduce((sum, child) => {
     return sum + (child.includeInPlan ? child.monthlyCost + child.educationMonthlySaving : 0);
   }, 0);
@@ -914,7 +921,22 @@ function getTotals(source) {
   const monthlyExpense = source.livingCost + source.mortgagePayment + source.carPayment + source.fixedCost + propertyExpense + childExpense;
   const monthlySurplus = monthlyIncome - monthlyExpense;
   const targetGap = source.targetCash + (source.debtFreeRequired ? totalDebt : 0) - totalAssets;
-  return { totalDebt, totalAssets, monthlyIncome, monthlyExpense, monthlySurplus, targetGap, netWorth: totalAssets - totalDebt };
+  return {
+    totalDebt,
+    totalAssets,
+    propertyDebt,
+    monthlyIncome,
+    monthlyExpense,
+    monthlySurplus,
+    targetGap,
+    netWorth: totalAssets - totalDebt,
+    details: {
+      propertyIncome,
+      propertyMortgage: propertyExpenseBreakdown.mortgage,
+      propertyHolding: propertyExpenseBreakdown.holding,
+      childExpense,
+    },
+  };
 }
 
 function eventApplies(event, month) {
@@ -1460,6 +1482,8 @@ function renderResults() {
   document.querySelector("#etaDate").textContent = completionDate(projected.months);
   document.querySelector("#gapText").textContent = money(Math.max(0, totals.targetGap));
   document.querySelector("#monthlySurplusText").textContent = money(totals.monthlySurplus);
+  document.querySelector("#gapDetailText").textContent = `目标 ${money(state.targetCash)} + 负债 ${money(totals.totalDebt)} - 存款/投资 ${money(totals.totalAssets)}`;
+  document.querySelector("#monthlySurplusDetailText").textContent = `收入 ${money(totals.monthlyIncome)} - 支出 ${money(totals.monthlyExpense)}`;
   document.querySelector("#netWorthText").textContent = money(totals.netWorth);
   document.querySelector("#basePlanText").textContent = `${formatDuration(base.months)} · ${completionDate(base.months)}`;
   document.querySelector("#payYourselfText").textContent = money(totals.monthlyIncome * (state.payYourselfRate / 100));
