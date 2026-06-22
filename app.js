@@ -19,6 +19,7 @@ function createProperty(overrides = {}) {
     saleCost: 0,
     saleNote: "",
     includeInPlan: true,
+    includeDebtInHousehold: true,
     rentRecords: [
       {
         id: id(),
@@ -67,6 +68,36 @@ function createProperty(overrides = {}) {
   return { ...base, ...withoutUndefined(overrides) };
 }
 
+function createCar(overrides = {}) {
+  const base = {
+    id: id(),
+    name: "家庭用车 1",
+    purchaseDate: "2026-01-01",
+    price: 150000,
+    downPayment: 50000,
+    loanInitial: 100000,
+    interestType: "interestFree",
+    annualRate: 0,
+    includeDebtInHousehold: true,
+    paymentPeriods: [
+      { id: id(), startMonth: "2026-02", endMonth: "2028-10", monthlyPayment: 3000 },
+    ],
+    prepayments: [],
+  };
+  return { ...base, ...withoutUndefined(overrides) };
+}
+
+function createChildGrowthStage(overrides = {}) {
+  return {
+    id: id(),
+    name: "0-3岁",
+    startAge: 0,
+    endAge: 3,
+    monthlyCost: 3000,
+    ...withoutUndefined(overrides),
+  };
+}
+
 function createChild(overrides = {}) {
   const base = {
     id: id(),
@@ -79,6 +110,12 @@ function createChild(overrides = {}) {
     educationMonthlySaving: 1000,
     years: 18,
     includeInPlan: true,
+    growthStages: [
+      createChildGrowthStage({ name: "0-3岁", startAge: 0, endAge: 3, monthlyCost: 3500 }),
+      createChildGrowthStage({ name: "3-6岁", startAge: 3, endAge: 6, monthlyCost: 2500 }),
+      createChildGrowthStage({ name: "6-12岁", startAge: 6, endAge: 12, monthlyCost: 3000 }),
+      createChildGrowthStage({ name: "12-18岁", startAge: 12, endAge: 18, monthlyCost: 4000 }),
+    ],
     cashflows: [
       {
         id: id(),
@@ -131,7 +168,7 @@ function createMonthlyRecord(overrides = {}) {
     otherNextBill: 0,
     cashAsset: 100000,
     gooseAsset: 50000,
-    mortgageBalance: 300000,
+    mortgageBalance: 0,
     carLoanBalance: 100000,
     otherDebt: 0,
     successNote: "这个月认真完成了一次家庭财务复盘。",
@@ -217,6 +254,7 @@ const defaultState = {
   ],
   journals: [createJournal()],
   properties: [createProperty()],
+  cars: [],
   children: [createChild()],
   events: [
     {
@@ -244,7 +282,7 @@ let state = loadState();
 let formBound = false;
 let saveStateTimer = null;
 let renderResultsTimer = null;
-const TAB_IDS = ["home", "monthly", "dreams", "goose", "debt-property", "events", "review"];
+const TAB_IDS = ["home", "monthly", "dreams", "goose", "debt-property", "children", "events", "review"];
 
 const numberFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const currencyFormatter = new Intl.NumberFormat("zh-CN", {
@@ -363,6 +401,7 @@ function normalizeState(saved) {
     properties: Array.isArray(saved.properties)
       ? saved.properties.map((property, index) => normalizeProperty(property, index))
       : [normalizeProperty(migratedProperty, 0)],
+    cars: Array.isArray(saved.cars) ? saved.cars.map((car, index) => normalizeCar(car, index)) : [],
     children: Array.isArray(saved.children)
       ? saved.children.map((child, index) => normalizeChild(child, index))
       : [normalizeChild(migratedChild, 0)],
@@ -390,6 +429,20 @@ function normalizeEvent(event, index) {
     endDate: safeEvent.endDate || safeEvent.startDate || toDateInputValue(new Date()),
     amount: toNumber(safeEvent.amount),
   };
+}
+
+function normalizeCar(car, index) {
+  const safeCar = car && typeof car === "object" ? car : {};
+  return createCar({
+    ...safeCar,
+    id: safeCar.id || id(),
+    name: safeCar.name || `车辆 ${index + 1}`,
+    annualRate: safeCar.interestType === "interestFree" ? 0 : toNumber(safeCar.annualRate),
+    paymentPeriods: Array.isArray(safeCar.paymentPeriods)
+      ? safeCar.paymentPeriods.map((period) => ({ ...period, id: period.id || id() }))
+      : [],
+    prepayments: Array.isArray(safeCar.prepayments) ? safeCar.prepayments.map((item) => ({ ...item, id: item.id || id() })) : [],
+  });
 }
 
 function cleanInternalNote(note) {
@@ -527,6 +580,9 @@ function normalizeChild(child, index) {
   return createChild({
     ...safeChild,
     name: safeChild.name || `孩子 ${index + 1}`,
+    growthStages: Array.isArray(safeChild.growthStages)
+      ? safeChild.growthStages.map((stage) => createChildGrowthStage({ ...stage, id: stage.id || id() }))
+      : [createChildGrowthStage({ monthlyCost: safeChild.monthlyCost ?? 0, endAge: safeChild.years || 18 })],
     cashflows: Array.isArray(safeChild.cashflows) ? safeChild.cashflows : legacyCashflows,
   });
 }
@@ -854,6 +910,62 @@ function getComputedPeriodBalance(property, period, field) {
   return Math.round(buildPropertyLedger(property, endDate).balance);
 }
 
+function buildCarLedger(car, untilDateValue = new Date()) {
+  const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
+  let balance = toNumber(car.loanInitial);
+  let totalPaid = 0;
+  let totalPrincipal = 0;
+  let totalInterest = 0;
+  const entries = [];
+  const startMonth = dateToMonthInput(car.purchaseDate) || car.paymentPeriods?.[0]?.startMonth || monthKeyFromDate(new Date());
+  const untilMonth = untilDate ? monthKeyFromDate(untilDate) : monthKeyFromDate(new Date());
+  const span = monthIndexFromMonth(startMonth, untilMonth);
+  if (!Number.isFinite(span) || span < 0) return { balance, totalPaid, totalPrincipal, totalInterest, entries };
+  const periods = sortByStartMonthAsc(getValidRangeRecords(car.paymentPeriods));
+  for (let offset = 0; offset <= span && balance > 0; offset += 1) {
+    const monthKey = monthKeyFromDate(addMonths(parseMonth(startMonth), offset));
+    const period = periods.filter((item) => monthInRange(monthKey, item.startMonth, item.endMonth)).at(-1);
+    if (period) {
+      const monthlyRate = car.interestType === "interestFree" ? 0 : toNumber(car.annualRate) / 100 / 12;
+      const interest = balance * monthlyRate;
+      const plannedPayment = toNumber(period.monthlyPayment);
+      const actualPayment = Math.min(plannedPayment, balance + interest);
+      const principal = Math.max(0, actualPayment - interest);
+      balance = Math.max(0, balance - principal);
+      totalPaid += actualPayment;
+      totalPrincipal += principal;
+      totalInterest += interest;
+      entries.push({ month: monthKey, payment: actualPayment, principal, interest, balance });
+    }
+    (car.prepayments || []).filter((item) => dateToMonthInput(item.date) === monthKey).forEach((item) => {
+      const principal = Math.min(balance, toNumber(item.amount));
+      balance -= principal;
+      totalPaid += principal;
+      totalPrincipal += principal;
+      entries.push({ month: monthKey, payment: principal, principal, interest: 0, balance, prepayment: true });
+    });
+  }
+  return { balance, totalPaid, totalPrincipal, totalInterest, entries };
+}
+
+function getCurrentCarPayment(car) {
+  const currentMonth = monthKeyFromDate(new Date());
+  return getValidRangeRecords(car.paymentPeriods)
+    .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
+    .reduce((sum, period) => sum + toNumber(period.monthlyPayment), 0);
+}
+
+function carInsightHtml(car) {
+  const ledger = buildCarLedger(car, new Date());
+  const currentPayment = getCurrentCarPayment(car);
+  return [
+    insight("当前剩余车贷本金", money(ledger.balance), "初始贷款 - 累计归还本金 - 提前还款", `${exactMoney(car.loanInitial)} - ${exactMoney(ledger.totalPrincipal)} = ${exactMoney(ledger.balance)}`),
+    insight("累计已还本金 / 利息", `${money(ledger.totalPrincipal)} / ${money(ledger.totalInterest)}`, car.interestType === "interestFree" ? "无息贷款：每月还款全部冲减本金" : "月利息 = 月初本金 × 年利率 ÷ 12；月本金 = 月供 - 月利息", `${exactMoney(ledger.totalPrincipal)} + ${exactMoney(ledger.totalInterest)} = ${exactMoney(ledger.totalPaid)}`),
+    insight("当前月供", money(currentPayment), "读取覆盖当前月份的还款区间", exactMoney(currentPayment)),
+    insight("购车已投入", money(toNumber(car.downPayment) + ledger.totalPaid), "首付 + 累计车贷还款", `${exactMoney(car.downPayment)} + ${exactMoney(ledger.totalPaid)} = ${exactMoney(toNumber(car.downPayment) + ledger.totalPaid)}`),
+  ].join("");
+}
+
 function getMortgagePeriodForMonth(property, monthKey, options = {}) {
   const periods = sortByStartMonthAsc(getValidRangeRecords(property.mortgagePeriods));
   const active = periods.filter((period) => monthInRange(monthKey, period.startMonth, period.endMonth)).at(-1);
@@ -974,11 +1086,27 @@ function calculateProperty(property) {
 }
 
 function getChildSummary(child) {
-  const oneTime = child.prenatalCost + child.birthCost + child.babySetupCost;
-  const monthly = child.monthlyCost + child.educationMonthlySaving;
-  const months = Math.max(1, child.years * 12);
+  const oneTime = toNumber(child.prenatalCost) + toNumber(child.birthCost) + toNumber(child.babySetupCost);
+  const years = Math.max(1, toNumber(child.years));
+  const months = years * 12;
+  const stages = Array.isArray(child.growthStages) ? child.growthStages.filter((stage) => toNumber(stage.endAge) > toNumber(stage.startAge)) : [];
+  const stageDetails = stages.map((stage) => {
+    const startAge = Math.max(0, toNumber(stage.startAge));
+    const endAge = Math.min(years, toNumber(stage.endAge));
+    const stageMonths = Math.max(0, (endAge - startAge) * 12);
+    return { ...stage, stageMonths, total: toNumber(stage.monthlyCost) * stageMonths };
+  }).filter((stage) => stage.stageMonths > 0);
+  const growthExpense = stageDetails.length
+    ? stageDetails.reduce((sum, stage) => sum + stage.total, 0)
+    : toNumber(child.monthlyCost) * months;
+  const educationTotal = toNumber(child.educationMonthlySaving) * months;
   const childStart = parseDate(child.startDate);
   const childEnd = childStart ? parseDate(dateFromMonthOffset(childStart, months)) : null;
+  const ageMonths = childStart ? monthIndexFromDate(childStart, new Date()) : 0;
+  const ageYears = Math.max(0, ageMonths / 12);
+  const currentStage = stages.find((stage) => ageYears >= toNumber(stage.startAge) && ageYears < toNumber(stage.endAge));
+  const currentGrowthMonthly = currentStage ? toNumber(currentStage.monthlyCost) : stageDetails[0]?.monthlyCost ?? toNumber(child.monthlyCost);
+  const monthly = toNumber(currentGrowthMonthly) + toNumber(child.educationMonthlySaving);
   const extra = (child.cashflows || []).reduce(
     (totals, item) => {
       const date = parseDate(item.date);
@@ -994,9 +1122,13 @@ function getChildSummary(child) {
     oneTime,
     monthly,
     months,
+    growthExpense,
+    educationTotal,
+    stageDetails,
+    currentStageName: currentStage?.name || stageDetails[0]?.name || "默认阶段",
     extraIncome: extra.income,
     extraExpense: extra.expense,
-    total: oneTime + monthly * months + extra.expense - extra.income,
+    total: oneTime + growthExpense + educationTotal + extra.expense - extra.income,
   };
 }
 
@@ -1381,15 +1513,17 @@ function childInsightHtml(child, summary) {
     insight(
       "阶段净成本",
       money(summary.total),
-      "一次性支出 + 基础月支出 × 测算月数 + 额外支出 - 额外收入",
-      `${exactMoney(summary.oneTime)} + ${exactMoney(summary.monthly)} × ${summary.months}个月 + ${exactMoney(summary.extraExpense)} - ${exactMoney(summary.extraIncome)} = ${exactMoney(summary.total)}`,
+      "产检/生产等一次性支出 + 各成长阶段支出 + 教育金储备 + 额外支出 - 额外收入",
+      `${exactMoney(summary.oneTime)} + ${exactMoney(summary.growthExpense)} + ${exactMoney(summary.educationTotal)} + ${exactMoney(summary.extraExpense)} - ${exactMoney(summary.extraIncome)} = ${exactMoney(summary.total)}`,
     ),
     insight(
-      "基础月支出",
+      `${summary.currentStageName}月支出`,
       money(summary.monthly),
-      "每月养娃支出 + 教育金每月储备",
-      `${exactMoney(child.monthlyCost)} + ${exactMoney(child.educationMonthlySaving)} = ${exactMoney(summary.monthly)}`,
+      "当前/起始成长阶段月支出 + 教育金每月储备",
+      `${exactMoney(summary.monthly - toNumber(child.educationMonthlySaving))} + ${exactMoney(child.educationMonthlySaving)} = ${exactMoney(summary.monthly)}`,
     ),
+    insight("成长阶段支出合计", money(summary.growthExpense), "Σ（阶段月支出 × 阶段月数）", summary.stageDetails.length ? `${summary.stageDetails.map((stage) => `${stage.name} ${exactMoney(stage.monthlyCost)} × ${stage.stageMonths}个月`).join(" + ")} = ${exactMoney(summary.growthExpense)}` : `${exactMoney(child.monthlyCost)} × ${summary.months}个月 = ${exactMoney(summary.growthExpense)}`),
+    insight("教育金储备合计", money(summary.educationTotal), "教育金每月储备 × 测算月数", `${exactMoney(child.educationMonthlySaving)} × ${summary.months}个月 = ${exactMoney(summary.educationTotal)}`),
     insight("额外支出合计", money(summary.extraExpense), "Σ 有效测算期内所有额外支出", exactMoney(summary.extraExpense)),
     insight("额外收入合计", money(summary.extraIncome), "Σ 有效测算期内育儿补贴、报销等收入", exactMoney(summary.extraIncome)),
   ].join("");
@@ -1567,6 +1701,60 @@ function renderProperties() {
   });
 }
 
+function renderCars() {
+  const list = document.querySelector("#carList");
+  const template = document.querySelector("#carTemplate");
+  if (!list || !template) return;
+  state.cars = Array.isArray(state.cars) ? state.cars.map(normalizeCar) : [];
+  list.innerHTML = "";
+  state.cars.forEach((car) => {
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.querySelectorAll("[data-car-field]").forEach((input) => {
+      const field = input.dataset.carField;
+      if (input.type === "checkbox") input.checked = Boolean(car[field]);
+      else input.value = car[field] ?? "";
+      if (field === "annualRate") input.disabled = car.interestType === "interestFree";
+      input.addEventListener("input", () => {
+        car[field] = readInputValue(input);
+        if (field === "interestType" && car.interestType === "interestFree") car.annualRate = 0;
+        saveState();
+        if (field === "interestType") renderCars();
+        else {
+          node.querySelector(".car-summary").innerHTML = carInsightHtml(car);
+          renderDebtSnapshot();
+          renderV2Home();
+        }
+      });
+    });
+    node.querySelector(".delete-car").addEventListener("click", () => {
+      state.cars = state.cars.filter((item) => item.id !== car.id);
+      saveStateNow(); renderCars(); renderDebtSnapshot(); renderV2Home();
+    });
+    node.querySelector(".add-car-period").addEventListener("click", () => {
+      const startMonth = getNextAvailableStartMonth(car.paymentPeriods);
+      car.paymentPeriods.push({ id: id(), startMonth, endMonth: startMonth, monthlyPayment: 0 });
+      saveStateNow(); renderCars();
+    });
+    node.querySelector(".add-car-prepayment").addEventListener("click", () => {
+      car.prepayments.push({ id: id(), date: toDateInputValue(new Date()), amount: 10000 });
+      saveStateNow(); renderCars();
+    });
+    renderRecordList({
+      container: node.querySelector(".car-period-list"), templateId: "#carPaymentPeriodTemplate", records: car.paymentPeriods,
+      onChange: () => { saveState(); node.querySelector(".car-summary").innerHTML = carInsightHtml(car); renderDebtSnapshot(); renderV2Home(); },
+      onDelete: (recordId) => { car.paymentPeriods = car.paymentPeriods.filter((item) => item.id !== recordId); saveStateNow(); renderCars(); renderDebtSnapshot(); renderV2Home(); },
+      validateRanges: true, sortMode: "monthDesc",
+    });
+    renderRecordList({
+      container: node.querySelector(".car-prepayment-list"), templateId: "#prepaymentTemplate", records: car.prepayments,
+      onChange: () => { saveState(); node.querySelector(".car-summary").innerHTML = carInsightHtml(car); renderDebtSnapshot(); renderV2Home(); },
+      onDelete: (recordId) => { car.prepayments = car.prepayments.filter((item) => item.id !== recordId); saveStateNow(); renderCars(); renderDebtSnapshot(); renderV2Home(); },
+    });
+    node.querySelector(".car-summary").innerHTML = carInsightHtml(car);
+    list.appendChild(node);
+  });
+}
+
 function renderChildren() {
   const list = document.querySelector("#childList");
   const template = document.querySelector("#childTemplate");
@@ -1593,6 +1781,18 @@ function renderChildren() {
       child.cashflows.push({ id: id(), date: toDateInputValue(new Date()), direction: "expense", category: "medical", amount: 1000, note: "" });
       saveState();
       render();
+    });
+    node.querySelector(".add-child-stage").addEventListener("click", () => {
+      const latestEnd = (child.growthStages || []).reduce((max, stage) => Math.max(max, toNumber(stage.endAge)), 0);
+      child.growthStages.push(createChildGrowthStage({ name: `${latestEnd}-${latestEnd + 3}岁`, startAge: latestEnd, endAge: latestEnd + 3, monthlyCost: 0 }));
+      saveStateNow(); render(); activateTab("children");
+    });
+    renderRecordList({
+      container: node.querySelector(".child-stage-list"),
+      templateId: "#childGrowthStageTemplate",
+      records: child.growthStages,
+      onChange: () => { saveState(); scheduleRenderResults(); },
+      onDelete: (recordId) => { child.growthStages = child.growthStages.filter((item) => item.id !== recordId); saveStateNow(); render(); activateTab("children"); },
     });
     renderRecordList({
       container: node.querySelector(".child-cashflow-list"),
@@ -1683,7 +1883,15 @@ function getMonthlyRecordSummary(record) {
   if (!record) return null;
   const totalIncome = toNumber(record.salaryIncome) + toNumber(record.sideIncome) + toNumber(record.rentIncome) + toNumber(record.otherIncome);
   const lastBills = toNumber(record.lastCreditCardBill) + toNumber(record.lastHuabeiBill) + toNumber(record.otherLastBill);
-  const fixedExpenses = toNumber(record.mortgagePayment) + toNumber(record.carLoanPayment) + toNumber(record.rentPayment) + toNumber(record.insurancePayment) + toNumber(record.fixedOtherPayment);
+  const currentMonth = monthKeyFromDate(new Date());
+  const propertyModulePayment = (state.properties || []).reduce((sum, property) => {
+    if (property.includeDebtInHousehold === false) return sum;
+    return sum + getValidRangeRecords(property.mortgagePeriods)
+      .filter((period) => monthInRange(currentMonth, period.startMonth, period.endMonth))
+      .reduce((periodSum, period) => periodSum + toNumber(period.monthlyPayment), 0);
+  }, 0);
+  const vehicleModulePayment = (state.cars || []).reduce((sum, car) => sum + (car.includeDebtInHousehold !== false ? getCurrentCarPayment(car) : 0), 0);
+  const fixedExpenses = propertyModulePayment + toNumber(record.mortgagePayment) + vehicleModulePayment + toNumber(record.carLoanPayment) + toNumber(record.rentPayment) + toNumber(record.insurancePayment) + toNumber(record.fixedOtherPayment);
   const afterBillsSavable = totalIncome - lastBills - fixedExpenses;
   const payFirstSavable = toNumber(record.salaryIncome) * (toNumber(state.payYourselfRate) / 100);
   const savable = state.savingMode === "payFirst" ? payFirstSavable : afterBillsSavable;
@@ -1691,11 +1899,19 @@ function getMonthlyRecordSummary(record) {
   const nextBills = toNumber(record.currentCreditCardBill) + toNumber(record.currentHuabeiBill) + toNumber(record.otherNextBill);
   const billChange = nextBills - lastBills;
   const totalAssets = toNumber(record.cashAsset) + toNumber(record.gooseAsset);
-  const totalDebt = toNumber(record.mortgageBalance) + toNumber(record.carLoanBalance) + toNumber(record.otherDebt);
+  const propertyMortgageDebt = (state.properties || []).reduce((sum, property) => {
+    return sum + (property.includeDebtInHousehold !== false ? buildPropertyLedger(property, new Date()).balance : 0);
+  }, 0);
+  const vehicleLoanDebt = (state.cars || []).reduce((sum, car) => {
+    return sum + (car.includeDebtInHousehold !== false ? buildCarLedger(car, new Date()).balance : 0);
+  }, 0);
+  const otherMortgageDebt = toNumber(record.mortgageBalance);
+  const otherCarDebt = toNumber(record.carLoanBalance);
+  const totalDebt = propertyMortgageDebt + otherMortgageDebt + vehicleLoanDebt + otherCarDebt + toNumber(record.otherDebt);
   const netWorth = totalAssets - totalDebt;
   const targetGap = Math.max(0, toNumber(state.targetCash) + (state.debtFreeRequired ? totalDebt : 0) - totalAssets);
   const etaMonths = savable > 0 ? Math.ceil(targetGap / savable) : Infinity;
-  return { totalIncome, lastBills, fixedExpenses, afterBillsSavable, payFirstSavable, savable, actuallySaved, nextBills, billChange, totalAssets, totalDebt, netWorth, targetGap, etaMonths };
+  return { totalIncome, lastBills, fixedExpenses, propertyModulePayment, vehicleModulePayment, afterBillsSavable, payFirstSavable, savable, actuallySaved, nextBills, billChange, totalAssets, propertyMortgageDebt, otherMortgageDebt, vehicleLoanDebt, otherCarDebt, totalDebt, netWorth, targetGap, etaMonths };
 }
 
 function syncLegacyFromMonthly(record) {
@@ -1716,10 +1932,10 @@ function syncLegacyFromMonthly(record) {
 const monthlyGroups = [
   ["收入", [["salaryIncome", "工资收入"], ["sideIncome", "副业收入"], ["rentIncome", "房租收入"], ["otherIncome", "其他收入"]]],
   ["还清上月账单", [["lastCreditCardBill", "上月信用卡账单"], ["lastHuabeiBill", "上月花呗账单"], ["otherLastBill", "其他上月消费账单"]]],
-  ["本月固定支出", [["mortgagePayment", "房贷"], ["carLoanPayment", "车贷"], ["rentPayment", "房租"], ["insurancePayment", "保险/社保/固定缴费"], ["fixedOtherPayment", "其他固定支出"]]],
+  ["本月固定支出", [["mortgagePayment", "其他未录入房产模块的房贷月供"], ["carLoanPayment", "其他未录入车辆模块的车贷月供"], ["rentPayment", "房租"], ["insurancePayment", "保险/社保/固定缴费"], ["fixedOtherPayment", "其他固定支出"]]],
   ["本月存下", [["actualCashSaved", "实际存入现金"], ["gooseAdded", "鹅账户新增"], ["earlyDebtPayment", "提前还贷金额"]]],
   ["本月新增账单（下月待还）", [["currentCreditCardBill", "本月信用卡新增消费"], ["currentHuabeiBill", "本月花呗新增消费"], ["otherNextBill", "其他下月待还"]]],
-  ["月末资产负债快照", [["cashAsset", "当前现金存款"], ["gooseAsset", "当前鹅账户金额"], ["mortgageBalance", "房贷余额"], ["carLoanBalance", "车贷余额"], ["otherDebt", "其他负债"]]],
+  ["月末资产负债快照", [["cashAsset", "当前现金存款"], ["gooseAsset", "当前鹅账户金额"], ["mortgageBalance", "其他未录入房产模块的房贷"], ["carLoanBalance", "其他未录入车辆模块的车贷"], ["otherDebt", "其他负债"]]],
 ];
 
 function renderMonthlyRecord() {
@@ -1768,7 +1984,7 @@ function renderMonthlySummary(record) {
   container.innerHTML = [
     insight("总收入", money(result.totalIncome), "工资 + 副业 + 房租 + 其他收入", `${exactMoney(record.salaryIncome)} + ${exactMoney(record.sideIncome)} + ${exactMoney(record.rentIncome)} + ${exactMoney(record.otherIncome)} = ${exactMoney(result.totalIncome)}`),
     insight("上月账单合计", money(result.lastBills), "信用卡 + 花呗 + 其他上月账单", `${exactMoney(record.lastCreditCardBill)} + ${exactMoney(record.lastHuabeiBill)} + ${exactMoney(record.otherLastBill)} = ${exactMoney(result.lastBills)}`),
-    insight("固定支出合计", money(result.fixedExpenses), "房贷 + 车贷 + 房租 + 保险固定缴费 + 其他", `${exactMoney(record.mortgagePayment)} + ${exactMoney(record.carLoanPayment)} + ${exactMoney(record.rentPayment)} + ${exactMoney(record.insurancePayment)} + ${exactMoney(record.fixedOtherPayment)} = ${exactMoney(result.fixedExpenses)}`),
+    insight("固定支出合计", money(result.fixedExpenses), "房产月供 + 其他房贷 + 车辆月供 + 其他车贷 + 房租 + 保险固定缴费 + 其他", `${exactMoney(result.propertyModulePayment)} + ${exactMoney(record.mortgagePayment)} + ${exactMoney(result.vehicleModulePayment)} + ${exactMoney(record.carLoanPayment)} + ${exactMoney(record.rentPayment)} + ${exactMoney(record.insurancePayment)} + ${exactMoney(record.fixedOtherPayment)} = ${exactMoney(result.fixedExpenses)}`),
     insight(
       state.savingMode === "payFirst" ? "本月建议先存" : "本月可存金额",
       money(result.savable),
@@ -1777,7 +1993,7 @@ function renderMonthlySummary(record) {
     ),
     insight("本月实际存下", money(result.actuallySaved), "存入现金 + 喂鹅 + 提前还贷", `${exactMoney(record.actualCashSaved)} + ${exactMoney(record.gooseAdded)} + ${exactMoney(record.earlyDebtPayment)} = ${exactMoney(result.actuallySaved)}`),
     insight("下月待还账单", money(result.nextBills), "本月新增信用卡 + 花呗 + 其他待还", `${exactMoney(record.currentCreditCardBill)} + ${exactMoney(record.currentHuabeiBill)} + ${exactMoney(record.otherNextBill)} = ${exactMoney(result.nextBills)}`),
-    insight("家庭净资产", money(result.netWorth), "当前总资产 - 当前总负债", `${exactMoney(result.totalAssets)} - ${exactMoney(result.totalDebt)} = ${exactMoney(result.netWorth)}`),
+    insight("家庭净资产", money(result.netWorth), "当前总资产 - 全部家庭负债", `${exactMoney(result.totalAssets)} - (${exactMoney(result.propertyMortgageDebt)} + ${exactMoney(result.otherMortgageDebt)} + ${exactMoney(result.vehicleLoanDebt)} + ${exactMoney(result.otherCarDebt)} + ${exactMoney(record.otherDebt)}) = ${exactMoney(result.netWorth)}`),
   ].join("");
 }
 
@@ -1808,7 +2024,7 @@ function renderV2Home() {
   if (!record) return;
   const result = getMonthlyRecordSummary(record);
   document.querySelector("#homeNetWorthText").textContent = money(result.netWorth);
-  document.querySelector("#homeNetWorthDetail").textContent = `代入：${exactMoney(result.totalAssets)} - ${exactMoney(result.totalDebt)} = ${exactMoney(result.netWorth)}`;
+  document.querySelector("#homeNetWorthDetail").textContent = `代入：资产 ${exactMoney(result.totalAssets)} -（房产房贷 ${exactMoney(result.propertyMortgageDebt)} + 其他房贷 ${exactMoney(result.otherMortgageDebt)} + 车辆模块车贷 ${exactMoney(result.vehicleLoanDebt)} + 其他车贷 ${exactMoney(result.otherCarDebt)} + 其他负债 ${exactMoney(record.otherDebt)}）= ${exactMoney(result.netWorth)}`;
   document.querySelector("#homeGapText").textContent = money(result.targetGap);
   document.querySelector("#gapFormulaText").textContent = state.debtFreeRequired ? "公式：目标存款 + 总负债 - 当前总资产" : "公式：目标存款 - 当前总资产";
   document.querySelector("#homeGapDetail").textContent = state.debtFreeRequired
@@ -1932,10 +2148,12 @@ function renderDebtSnapshot() {
   if (!container || !record) return;
   const result = getMonthlyRecordSummary(record);
   container.innerHTML = [
-    insight("房贷余额", money(record.mortgageBalance), "读取最新月度记录", exactMoney(record.mortgageBalance)),
-    insight("车贷余额", money(record.carLoanBalance), "读取最新月度记录", exactMoney(record.carLoanBalance)),
+    insight("房产房贷余额", money(result.propertyMortgageDebt), "Σ 勾选“计入家庭总负债”的房产剩余贷款本金", exactMoney(result.propertyMortgageDebt)),
+    insight("其他房贷余额", money(result.otherMortgageDebt), "读取最新月度记录中未录入房产模块的房贷", exactMoney(result.otherMortgageDebt)),
+    insight("车辆模块车贷", money(result.vehicleLoanDebt), "Σ 勾选“计入家庭总负债”的车辆剩余贷款本金", exactMoney(result.vehicleLoanDebt)),
+    insight("其他车贷余额", money(result.otherCarDebt), "读取最新月度记录中未录入车辆模块的车贷", exactMoney(result.otherCarDebt)),
     insight("其他负债", money(record.otherDebt), "读取最新月度记录", exactMoney(record.otherDebt)),
-    insight("家庭总负债", money(result.totalDebt), "房贷 + 车贷 + 其他负债", `${exactMoney(record.mortgageBalance)} + ${exactMoney(record.carLoanBalance)} + ${exactMoney(record.otherDebt)} = ${exactMoney(result.totalDebt)}`),
+    insight("家庭总负债", money(result.totalDebt), "房产房贷 + 其他房贷 + 车辆车贷 + 其他车贷 + 其他负债", `${exactMoney(result.propertyMortgageDebt)} + ${exactMoney(result.otherMortgageDebt)} + ${exactMoney(result.vehicleLoanDebt)} + ${exactMoney(result.otherCarDebt)} + ${exactMoney(record.otherDebt)} = ${exactMoney(result.totalDebt)}`),
   ].join("");
 }
 
@@ -2043,6 +2261,7 @@ function renderResults() {
 
 function render() {
   renderProperties();
+  renderCars();
   renderChildren();
   renderEvents();
   renderMonthlyRecord();
@@ -2131,6 +2350,12 @@ document.querySelector("#addPropertyButton").addEventListener("click", () => {
   state.properties.push(createProperty({ name: `房产 ${state.properties.length + 1}` }));
   saveStateNow();
   render();
+});
+
+document.querySelector("#addCarButton")?.addEventListener("click", () => {
+  state.cars = Array.isArray(state.cars) ? state.cars : [];
+  state.cars.push(createCar({ name: `车辆 ${state.cars.length + 1}` }));
+  saveStateNow(); render(); activateTab("debt-property");
 });
 
 document.querySelector("#addChildButton").addEventListener("click", () => {

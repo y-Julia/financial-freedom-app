@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>财务自由目标规划 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260622-3" />
+    <link rel="stylesheet" href="styles.css?v=20260622-5" />
   </head>
   <body>
     <main class="app-shell">
@@ -24,6 +24,7 @@
             <a href="#dreams">梦想</a>
             <a href="#goose">鹅账户</a>
             <a href="#debt-property">债务/房产</a>
+            <a href="#children">养娃</a>
             <a href="#events">事件</a>
             <a href="#review">复盘</a>
           </nav>
@@ -301,19 +302,26 @@
               <div>
                 <p class="eyebrow">Debt & Property</p>
                 <h3>债务与房产</h3>
-                <p>家庭总负债只读取最新月度记录；房产卡用于分析现金流和出售假设，不重复计入。</p>
+                <p>家庭总负债由“勾选计入的房产房贷 + 月度记录中的其他房贷 + 车贷 + 其他负债”组成。</p>
               </div>
-              <button class="primary-button" id="addPropertyButton" type="button">新增房产</button>
+              <div class="title-actions">
+                <button class="ghost-button" id="addCarButton" type="button">新增车辆</button>
+                <button class="primary-button" id="addPropertyButton" type="button">新增房产</button>
+              </div>
             </div>
             <div class="debt-strip" id="debtSnapshot"></div>
+            <div class="record-title subsection-title"><h4>车辆与车贷</h4></div>
+            <div class="stack-list" id="carList"></div>
+            <div class="record-title subsection-title"><h4>房产与房贷</h4></div>
             <div class="stack-list" id="propertyList"></div>
           </section>
 
-          <section class="panel tab-panel" id="child">
+          <section class="panel tab-panel" id="children">
             <div class="section-title">
               <div>
-                <p class="eyebrow">Step 4</p>
-                <h3>孩子现金流</h3>
+                <p class="eyebrow">Child Growth</p>
+                <h3>养娃成本</h3>
+                <p>从产检、生产开始，按成长阶段记录每月支出，也保留生病、旅行、补贴等额外收支。</p>
               </div>
               <button class="primary-button" id="addChildButton" type="button">新增孩子</button>
             </div>
@@ -410,6 +418,7 @@
           <label>装修费用<input data-property-field="renovation" type="number" min="0" step="10000" /></label>
           <label>契税/中介/购房杂费<input data-property-field="purchaseFees" type="number" min="0" step="1000" /></label>
           <label class="check-row"><input data-property-field="includeInPlan" type="checkbox" /><span>纳入房产现金流分析</span></label>
+          <label class="check-row"><input data-property-field="includeDebtInHousehold" type="checkbox" /><span>将该房贷计入家庭总负债</span></label>
         </div>
 
         <div class="record-section">
@@ -460,6 +469,52 @@
       </article>
     </template>
 
+    <template id="carTemplate">
+      <article class="entity-card car-card">
+        <div class="entity-head">
+          <input class="entity-name" data-car-field="name" type="text" />
+          <button class="icon-button delete-car" type="button" aria-label="删除车辆">×</button>
+        </div>
+        <div class="form-grid">
+          <label>购车日期<input data-car-field="purchaseDate" type="date" /></label>
+          <label>车辆总价<input data-car-field="price" type="number" min="0" step="10000" /></label>
+          <label>首付金额<input data-car-field="downPayment" type="number" min="0" step="1000" /></label>
+          <label>初始贷款本金<input data-car-field="loanInitial" type="number" min="0" step="1000" /></label>
+          <label>贷款类型<select data-car-field="interestType"><option value="interestFree">无息贷款</option><option value="interestBearing">有息贷款</option></select></label>
+          <label>车贷年利率 %<input data-car-field="annualRate" type="number" min="0" max="30" step="0.01" /></label>
+          <label class="check-row"><input data-car-field="includeDebtInHousehold" type="checkbox" /><span>将该车贷计入家庭总负债</span></label>
+        </div>
+        <div class="record-section">
+          <div class="record-title"><h4>车贷还款区间</h4><button class="ghost-button add-car-period" type="button">新增还款区间</button></div>
+          <div class="record-list car-period-list"></div>
+        </div>
+        <div class="record-section">
+          <div class="record-title"><h4>提前还车贷</h4><button class="ghost-button add-car-prepayment" type="button">新增提前还款</button></div>
+          <div class="record-list car-prepayment-list"></div>
+        </div>
+        <div class="insight-grid car-summary"></div>
+      </article>
+    </template>
+
+    <template id="carPaymentPeriodTemplate">
+      <article class="record-card car-period-record">
+        <label>开始月份<input data-record-field="startMonth" type="month" /></label>
+        <label>结束月份<input data-record-field="endMonth" type="month" /></label>
+        <label>每月还款<input data-record-field="monthlyPayment" type="number" min="0" step="100" /></label>
+        <button class="icon-button delete-record" type="button" aria-label="删除车贷区间">×</button>
+      </article>
+    </template>
+
+    <template id="childGrowthStageTemplate">
+      <article class="record-card child-stage-record">
+        <label>阶段名称<input data-record-field="name" type="text" /></label>
+        <label>开始年龄<input data-record-field="startAge" type="number" min="0" max="30" step="1" /></label>
+        <label>结束年龄<input data-record-field="endAge" type="number" min="0" max="30" step="1" /></label>
+        <label>阶段每月支出<input data-record-field="monthlyCost" type="number" min="0" step="100" /></label>
+        <button class="icon-button delete-record" type="button" aria-label="删除成长阶段">×</button>
+      </article>
+    </template>
+
     <template id="childTemplate">
       <article class="entity-card">
         <div class="entity-head">
@@ -471,10 +526,18 @@
           <label>产检费用<input data-child-field="prenatalCost" type="number" min="0" step="1000" /></label>
           <label>生产/住院费用<input data-child-field="birthCost" type="number" min="0" step="1000" /></label>
           <label>婴儿用品一次性支出<input data-child-field="babySetupCost" type="number" min="0" step="1000" /></label>
-          <label>基础每月支出<input data-child-field="monthlyCost" type="number" min="0" step="500" /></label>
+          <label>无成长阶段时默认月支出<input data-child-field="monthlyCost" type="number" min="0" step="500" /></label>
           <label>教育金每月储备<input data-child-field="educationMonthlySaving" type="number" min="0" step="500" /></label>
           <label>测算到孩子几岁<input data-child-field="years" type="number" min="1" max="30" step="1" /></label>
-          <label class="check-row"><input data-child-field="includeInPlan" type="checkbox" /><span>接入总目标推算</span></label>
+          <label class="check-row"><input data-child-field="includeInPlan" type="checkbox" /><span>纳入养娃成本汇总</span></label>
+        </div>
+
+        <div class="record-section">
+          <div class="record-title">
+            <h4>成长阶段月支出</h4>
+            <button class="ghost-button add-child-stage" type="button">新增成长阶段</button>
+          </div>
+          <div class="record-list child-stage-list"></div>
         </div>
 
         <div class="record-section">
@@ -597,6 +660,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260622-3"></script>
+    <script src="app.js?v=20260622-5"></script>
   </body>
 </html>
