@@ -246,7 +246,7 @@ a {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -266,7 +266,7 @@ a {
   display: grid;
   align-content: start;
   gap: 8px;
-  min-height: 112px;
+  min-height: 164px;
   padding: 14px;
 }
 
@@ -296,6 +296,24 @@ label {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.calc-formula,
+.calc-values {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.calc-formula {
+  color: var(--muted);
+}
+
+.calc-values {
+  color: #52665d;
 }
 
 .panel {
@@ -434,8 +452,9 @@ textarea:focus {
 }
 
 .insight-box {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: start;
   gap: 12px;
   margin-top: 10px;
   padding: 11px;
@@ -447,6 +466,12 @@ textarea:focus {
 .insight-box strong {
   text-align: right;
   font-weight: 850;
+}
+
+.insight-box .calc-formula,
+.insight-box .calc-values {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .primary-button,

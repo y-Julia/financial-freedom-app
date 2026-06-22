@@ -435,6 +435,11 @@ function money(value) {
   return currencyFormatter.format(value);
 }
 
+function exactMoney(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? currencyFormatter.format(amount) : "--";
+}
+
 function parseDate(value) {
   if (!value) return null;
   const date = new Date(`${value}T00:00:00`);
@@ -763,7 +768,7 @@ function getMortgagePeriodBreakdown(property, period) {
 function formatMortgagePeriodMeta(property, period) {
   const breakdown = getMortgagePeriodBreakdown(property, period);
   if (!breakdown) return "";
-  return `这段累计还款 ${money(breakdown.payment)}，其中本金 ${money(breakdown.principal)}，利息 ${money(breakdown.interest)}`;
+  return `公式：月利息 = 月初本金 × 年利率 ÷ 12；月本金 = 月供 - 月利息。代入：累计还款 ${exactMoney(breakdown.payment)} = 本金 ${exactMoney(breakdown.principal)} + 利息 ${exactMoney(breakdown.interest)}`;
 }
 
 function getMonthlyHoldingCost(property, monthKey = monthKeyFromDate(new Date())) {
@@ -1146,8 +1151,120 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
   });
 }
 
-function insight(label, value) {
-  return `<div class="insight-box"><span>${label}</span><strong>${value}</strong></div>`;
+function insight(label, value, formula = "", values = "") {
+  const formulaHtml = formula ? `<small class="calc-formula">公式：${formula}</small>` : "";
+  const valuesHtml = values ? `<small class="calc-values">代入：${values}</small>` : "";
+  return `<div class="insight-box"><span>${label}</span><strong>${value}</strong>${formulaHtml}${valuesHtml}</div>`;
+}
+
+function rentIncomeCalculation(property, untilDateValue) {
+  const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
+  if (!untilDate) return "无有效截止日期";
+  const untilMonth = monthKeyFromDate(untilDate);
+  const parts = getValidRangeRecords(property.rentRecords)
+    .map((record) => {
+      const months = countMonthlyOccurrences(record.startMonth, record.endMonth, untilMonth);
+      return months > 0 ? `${exactMoney(toNumber(record.amount))} × ${months}个月` : "";
+    })
+    .filter(Boolean);
+  return parts.length ? parts.join(" + ") : "无有效租金区间";
+}
+
+function propertyInsightHtml(property, result, current) {
+  const ledger = result.sale.ledger;
+  const sunkCost = toNumber(property.downPayment) + toNumber(property.renovation) + toNumber(property.purchaseFees);
+  const holdingCost = Math.max(0, result.sale.totalOut - sunkCost - ledger.totalPaid);
+  const rentUntil = result.sale.saleEnabled ? property.sellDate : new Date();
+  const rentIncomeLabel = result.sale.saleEnabled
+    ? "累计租金收入（截至出售月，含出售当月）"
+    : "累计租金收入（截至当前月，含本月）";
+  const commonInsights = [
+    insight(
+      "当前估算剩余贷款本金",
+      money(current.balance),
+      "逐月以上月剩余本金扣除当月归还本金和提前还款",
+      `初始贷款 ${exactMoney(toNumber(property.loanInitial))}；累计归还本金 ${exactMoney(current.totalPrincipal)}；当前剩余 ${exactMoney(current.balance)}`,
+    ),
+    insight(
+      "累计已还本金 / 累计已还利息",
+      `${money(ledger.totalPrincipal)} / ${money(ledger.totalInterest)}`,
+      "月利息 = 月初本金 × 年利率 ÷ 12；月本金 = 月供 - 月利息",
+      `本金 ${exactMoney(ledger.totalPrincipal)} + 利息 ${exactMoney(ledger.totalInterest)} = 累计还款 ${exactMoney(ledger.totalPaid)}`,
+    ),
+    insight(
+      rentIncomeLabel,
+      money(result.sale.rentIncome),
+      "Σ（每月租金 × 区间包含月数）",
+      `${rentIncomeCalculation(property, rentUntil)} = ${exactMoney(result.sale.rentIncome)}`,
+    ),
+    insight(
+      "累计投入",
+      money(result.sale.totalOut),
+      "首付 + 装修 + 购房杂费 + 持有支出 + 累计房贷还款",
+      `${exactMoney(property.downPayment)} + ${exactMoney(property.renovation)} + ${exactMoney(property.purchaseFees)} + ${exactMoney(holdingCost)} + ${exactMoney(ledger.totalPaid)} = ${exactMoney(result.sale.totalOut)}`,
+    ),
+    insight(
+      "当前房产现金流净额",
+      money(result.sale.cashflowNet),
+      "累计租金 - 持有支出 - 累计房贷还款",
+      `${exactMoney(result.sale.rentIncome)} - ${exactMoney(holdingCost)} - ${exactMoney(ledger.totalPaid)} = ${exactMoney(result.sale.cashflowNet)}`,
+    ),
+  ];
+  const saleInsights = result.sale.saleEnabled
+    ? [
+        insight(
+          "出售时净盈亏",
+          money(result.sale.profit),
+          "累计收入 - 累计投入",
+          `${exactMoney(result.sale.totalIn)} - ${exactMoney(result.sale.totalOut)} = ${exactMoney(result.sale.profit)}`,
+        ),
+        insight(
+          "回本时间",
+          Number.isFinite(result.breakEvenMonth) ? formatDuration(result.breakEvenMonth) : "无法回本",
+          "从购房月开始逐月累计，首次满足累计收入 ≥ 累计投入",
+          Number.isFinite(result.breakEvenMonth) ? `第 ${result.breakEvenMonth} 个月达到回本` : "模拟期内累计收入始终小于累计投入",
+        ),
+        insight("出售价格（输入值）", money(property.sellPrice), "直接取出售假设中的预计售价", exactMoney(property.sellPrice)),
+        insight(
+          "出售时剩余贷款本金",
+          money(result.sale.remainingLoan),
+          "逐月计算至出售月后的剩余贷款本金",
+          `出售月剩余本金 ${exactMoney(result.sale.remainingLoan)}`,
+        ),
+        insight(
+          "出售净到手",
+          money(result.sale.saleNetCash),
+          "售价 - 出售时剩余贷款 - 出售税费/中介费",
+          `${exactMoney(property.sellPrice)} - ${exactMoney(result.sale.remainingLoan)} - ${exactMoney(property.saleCost)} = ${exactMoney(result.sale.saleNetCash)}`,
+        ),
+        insight(
+          "累计收入",
+          money(result.sale.totalIn),
+          "累计租金 + 出售净到手",
+          `${exactMoney(result.sale.rentIncome)} + ${exactMoney(result.sale.saleNetCash)} = ${exactMoney(result.sale.totalIn)}`,
+        ),
+      ]
+    : [insight("出售盈亏", "未设置出售假设", "只有填写出售日期和售价后才计算", "当前未参与出售测算")];
+  return [...commonInsights, ...saleInsights].join("");
+}
+
+function childInsightHtml(child, summary) {
+  return [
+    insight(
+      "阶段净成本",
+      money(summary.total),
+      "一次性支出 + 基础月支出 × 测算月数 + 额外支出 - 额外收入",
+      `${exactMoney(summary.oneTime)} + ${exactMoney(summary.monthly)} × ${summary.months}个月 + ${exactMoney(summary.extraExpense)} - ${exactMoney(summary.extraIncome)} = ${exactMoney(summary.total)}`,
+    ),
+    insight(
+      "基础月支出",
+      money(summary.monthly),
+      "每月养娃支出 + 教育金每月储备",
+      `${exactMoney(child.monthlyCost)} + ${exactMoney(child.educationMonthlySaving)} = ${exactMoney(summary.monthly)}`,
+    ),
+    insight("额外支出合计", money(summary.extraExpense), "Σ 有效测算期内所有额外支出", exactMoney(summary.extraExpense)),
+    insight("额外收入合计", money(summary.extraIncome), "Σ 有效测算期内育儿补贴、报销等收入", exactMoney(summary.extraIncome)),
+  ].join("");
 }
 
 function renderProperties() {
@@ -1316,28 +1433,8 @@ function renderProperties() {
     });
     const result = calculateProperty(property);
     const current = buildPropertyLedger(property, new Date());
-    const rentIncomeLabel = result.sale.saleEnabled
-      ? "累计租金收入（截至出售月，含出售当月）"
-      : "累计租金收入（截至当前月，含本月）";
-    const commonInsights = [
-      insight("当前估算剩余贷款本金", money(current.balance)),
-      insight("累计已还本金 / 累计已还利息", `${money(result.sale.ledger.totalPrincipal)} / ${money(result.sale.ledger.totalInterest)}`),
-      insight(rentIncomeLabel, money(result.sale.rentIncome)),
-      insight("累计投入", money(result.sale.totalOut)),
-      insight("当前房产现金流净额", money(result.sale.cashflowNet)),
-    ];
-    const saleInsights = result.sale.saleEnabled
-      ? [
-          insight("出售时净盈亏", money(result.sale.profit)),
-          insight("回本时间", Number.isFinite(result.breakEvenMonth) ? formatDuration(result.breakEvenMonth) : "无法回本"),
-          insight("出售价格", money(property.sellPrice)),
-          insight("出售时剩余贷款本金", money(result.sale.remainingLoan)),
-          insight("出售净到手", money(result.sale.saleNetCash)),
-          insight("累计收入", money(result.sale.totalIn)),
-        ]
-      : [insight("出售盈亏", "未设置出售假设")];
     const summary = node.querySelector(".property-summary");
-    if (summary) summary.innerHTML = [...commonInsights, ...saleInsights].join("");
+    if (summary) summary.innerHTML = propertyInsightHtml(property, result, current);
     list.appendChild(node);
   });
 }
@@ -1384,12 +1481,7 @@ function renderChildren() {
       },
     });
     const summary = getChildSummary(child);
-    node.querySelector(".child-summary").innerHTML = [
-      insight("阶段净成本", money(summary.total)),
-      insight("基础月支出", money(summary.monthly)),
-      insight("额外支出合计", money(summary.extraExpense)),
-      insight("额外收入合计", money(summary.extraIncome)),
-    ].join("");
+    node.querySelector(".child-summary").innerHTML = childInsightHtml(child, summary);
     list.appendChild(node);
   });
 }
@@ -1479,63 +1571,59 @@ function renderResults() {
   const childAgg = getChildAggregate();
 
   document.querySelector("#etaText").textContent = formatDuration(projected.months);
-  document.querySelector("#etaDate").textContent = completionDate(projected.months);
+  document.querySelector("#etaFormulaText").textContent = state.debtFreeRequired
+    ? "公式：按月模拟，存款/投资 ≥ 目标存款，且总负债 = 0"
+    : "公式：按月模拟，存款/投资 ≥ 目标存款";
+  document.querySelector("#etaDate").textContent = Number.isFinite(projected.months)
+    ? `代入：目标 ${exactMoney(state.targetCash)}；当前资产 ${exactMoney(totals.totalAssets)}；当前负债 ${exactMoney(totals.totalDebt)}；年化收益率 ${toNumber(state.annualReturn)}%；结果 ${completionDate(projected.months)}`
+    : `代入：目标 ${exactMoney(state.targetCash)}；当前资产 ${exactMoney(totals.totalAssets)}；当前负债 ${exactMoney(totals.totalDebt)}；当前条件下模拟期内未达成`;
   document.querySelector("#gapText").textContent = money(Math.max(0, totals.targetGap));
   document.querySelector("#monthlySurplusText").textContent = money(totals.monthlySurplus);
-  document.querySelector("#gapDetailText").textContent = `目标 ${money(state.targetCash)} + 负债 ${money(totals.totalDebt)} - 存款/投资 ${money(totals.totalAssets)}`;
-  document.querySelector("#monthlySurplusDetailText").textContent = `收入 ${money(totals.monthlyIncome)} - 支出 ${money(totals.monthlyExpense)}`;
+  document.querySelector("#gapFormulaText").textContent = state.debtFreeRequired
+    ? "公式：目标存款 + 总负债 - 当前存款/投资"
+    : "公式：目标存款 - 当前存款/投资";
+  document.querySelector("#gapDetailText").textContent = state.debtFreeRequired
+    ? `代入：${exactMoney(state.targetCash)} + ${exactMoney(totals.totalDebt)} - ${exactMoney(totals.totalAssets)} = ${exactMoney(Math.max(0, totals.targetGap))}`
+    : `代入：${exactMoney(state.targetCash)} - ${exactMoney(totals.totalAssets)} = ${exactMoney(Math.max(0, totals.targetGap))}`;
+  document.querySelector("#monthlySurplusDetailText").textContent =
+    `代入：工资 ${exactMoney(state.salary)} + 副业 ${exactMoney(state.sideIncome)} + 租金 ${exactMoney(totals.details.propertyIncome)}` +
+    ` - 生活 ${exactMoney(state.livingCost)} - 普通房贷 ${exactMoney(state.mortgagePayment)} - 车贷 ${exactMoney(state.carPayment)}` +
+    ` - 固定支出 ${exactMoney(state.fixedCost)} - 房产月供 ${exactMoney(totals.details.propertyMortgage)}` +
+    ` - 房产持有 ${exactMoney(totals.details.propertyHolding)} - 养娃 ${exactMoney(totals.details.childExpense)} = ${exactMoney(totals.monthlySurplus)}`;
   document.querySelector("#netWorthText").textContent = money(totals.netWorth);
   document.querySelector("#basePlanText").textContent = `${formatDuration(base.months)} · ${completionDate(base.months)}`;
-  document.querySelector("#payYourselfText").textContent = money(totals.monthlyIncome * (state.payYourselfRate / 100));
+  document.querySelector("#netWorthDetailText").textContent = `代入：${exactMoney(state.cash)} + ${exactMoney(state.investments)} - ${exactMoney(totals.totalDebt)} = ${exactMoney(totals.netWorth)}`;
+  document.querySelector("#basePlanDetailText").textContent = `代入：目标 ${exactMoney(state.targetCash)}；资产 ${exactMoney(totals.totalAssets)}；负债 ${exactMoney(totals.totalDebt)}；当前月结余 ${exactMoney(totals.monthlySurplus)}；年化 ${toNumber(state.annualReturn)}%`;
+  const payYourself = totals.monthlyIncome * (state.payYourselfRate / 100);
+  document.querySelector("#payYourselfText").textContent = money(payYourself);
+  document.querySelector("#payYourselfDetailText").textContent = `代入：${exactMoney(totals.monthlyIncome)} × ${toNumber(state.payYourselfRate)}% = ${exactMoney(payYourself)}`;
   document.querySelector("#propertyProfitText").textContent = propertyAgg.hasSale ? money(propertyAgg.profit) : "未设置";
   document.querySelector("#propertyBreakEvenText").textContent = propertyAgg.hasSale
-    ? `${state.properties.length} 套房产汇总`
-    : "未填写出售日期和售价";
+    ? `代入：${propertyAgg.snapshots.filter((item) => item.result.sale.saleEnabled).map((item) => `${item.property.name} ${exactMoney(item.result.sale.profit)}`).join(" + ")} = ${exactMoney(propertyAgg.profit)}`
+    : "代入：没有房产同时填写出售日期和售价，暂不计算";
   document.querySelector("#childCostText").textContent = money(childAgg.monthly);
-  document.querySelector("#childStartText").textContent = `${state.children.length} 个孩子汇总`;
+  document.querySelector("#childStartText").textContent = `代入：${childAgg.summaries.map((item) => `${item.child.name} ${exactMoney(item.summary.monthly)}`).join(" + ") || exactMoney(0)} = ${exactMoney(childAgg.monthly)}`;
 
   let impactText = "无变化";
   if (Number.isFinite(impact) && impact > 0) impactText = `延后 ${formatDuration(impact)}`;
   if (Number.isFinite(impact) && impact < 0) impactText = `提前 ${formatDuration(Math.abs(impact))}`;
   if (!Number.isFinite(projected.months)) impactText = "当前计划无法达成";
   document.querySelector("#eventImpactText").textContent = impactText;
+  document.querySelector("#eventImpactDetailText").textContent = Number.isFinite(projected.months) && Number.isFinite(base.months)
+    ? `代入：含事件 ${projected.months}个月 - 无事件 ${base.months}个月 = ${impact}个月`
+    : `代入：含事件 ${formatDuration(projected.months)}；无事件 ${formatDuration(base.months)}`;
   drawChart(projected.history);
 
   document.querySelectorAll(".property-summary").forEach((summary, index) => {
     const item = propertyAgg.snapshots[index];
     if (!item) return;
-    const rentIncomeLabel = item.result.sale.saleEnabled
-      ? "累计租金收入（截至出售月，含出售当月）"
-      : "累计租金收入（截至当前月，含本月）";
-    const commonInsights = [
-      insight("累计已还本金 / 累计已还利息", `${money(item.result.sale.ledger.totalPrincipal)} / ${money(item.result.sale.ledger.totalInterest)}`),
-      insight("当前估算剩余贷款本金", money(item.current.balance)),
-      insight(rentIncomeLabel, money(item.result.sale.rentIncome)),
-      insight("累计投入", money(item.result.sale.totalOut)),
-      insight("当前房产现金流净额", money(item.result.sale.cashflowNet)),
-    ];
-    const saleInsights = item.result.sale.saleEnabled
-      ? [
-          insight("出售时净盈亏", money(item.result.sale.profit)),
-          insight("回本时间", Number.isFinite(item.result.breakEvenMonth) ? formatDuration(item.result.breakEvenMonth) : "无法回本"),
-          insight("出售价格", money(item.property.sellPrice)),
-          insight("出售时剩余贷款本金", money(item.result.sale.remainingLoan)),
-          insight("出售净到手", money(item.result.sale.saleNetCash)),
-          insight("累计收入", money(item.result.sale.totalIn)),
-        ]
-      : [insight("出售盈亏", "未设置出售假设")];
-    summary.innerHTML = [...commonInsights, ...saleInsights].join("");
+    summary.innerHTML = propertyInsightHtml(item.property, item.result, item.current);
   });
 
   document.querySelectorAll(".child-summary").forEach((summary, index) => {
     const item = childAgg.summaries[index];
     if (!item) return;
-    summary.innerHTML = [
-      insight("阶段净成本", money(item.summary.total)),
-      insight("基础月支出", money(item.summary.monthly)),
-      insight("额外支出合计", money(item.summary.extraExpense)),
-      insight("额外收入合计", money(item.summary.extraIncome)),
-    ].join("");
+    summary.innerHTML = childInsightHtml(item.child, item.summary);
   });
 }
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>财务自由目标规划 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260618-10" />
+    <link rel="stylesheet" href="styles.css?v=20260622-1" />
   </head>
   <body>
     <main class="app-shell">
@@ -51,32 +51,38 @@
             <div class="metric highlight">
               <span>预计达成时间</span>
               <strong id="etaText">--</strong>
-              <small id="etaDate">--</small>
+              <small class="calc-formula" id="etaFormulaText">公式：按月模拟，资产达到目标且负债满足目标条件</small>
+              <small class="calc-values" id="etaDate">--</small>
             </div>
             <div class="metric">
               <span>目标缺口</span>
               <strong id="gapText">--</strong>
-              <small id="gapDetailText">无负债 + 目标存款</small>
+              <small class="calc-formula" id="gapFormulaText">目标存款 + 需还负债 - 当前资产</small>
+              <small class="calc-values" id="gapDetailText">--</small>
             </div>
             <div class="metric">
               <span>月净结余</span>
               <strong id="monthlySurplusText">--</strong>
-              <small id="monthlySurplusDetailText">收入 - 支出</small>
+              <small class="calc-formula">公式：工资 + 副业 + 租金 - 全部月支出</small>
+              <small class="calc-values" id="monthlySurplusDetailText">--</small>
             </div>
             <div class="metric">
               <span>事件影响</span>
               <strong id="eventImpactText">--</strong>
-              <small>相对无事件计划</small>
+              <small class="calc-formula">公式：含事件达成月数 - 无事件达成月数</small>
+              <small class="calc-values" id="eventImpactDetailText">--</small>
             </div>
             <div class="metric">
               <span>房产总盈亏</span>
               <strong id="propertyProfitText">--</strong>
-              <small id="propertyBreakEvenText">--</small>
+              <small class="calc-formula">公式：所有已设置出售房产的净盈亏合计</small>
+              <small class="calc-values" id="propertyBreakEvenText">--</small>
             </div>
             <div class="metric">
-              <span>养娃净成本</span>
+              <span>养娃月支出</span>
               <strong id="childCostText">--</strong>
-              <small id="childStartText">--</small>
+              <small class="calc-formula">公式：基础月支出 + 教育金月储备</small>
+              <small class="calc-values" id="childStartText">--</small>
             </div>
           </section>
 
@@ -92,6 +98,7 @@
               </div>
             </div>
             <canvas id="trendChart" width="1000" height="320" aria-label="资产趋势图"></canvas>
+            <small class="calc-formula">公式：每月资产 = 上月资产 ×（1 + 月收益率）+ 当月收入 - 当月支出 ± 当月一次性事件；每月负债按还款本金和提前还款递减。</small>
           </section>
 
           <div class="two-column">
@@ -185,14 +192,20 @@
               <div class="insight-box">
                 <span>当前净资产（资产 - 负债）</span>
                 <strong id="netWorthText">--</strong>
+                <small class="calc-formula">公式：当前存款 + 投资资产 - 总负债</small>
+                <small class="calc-values" id="netWorthDetailText">--</small>
               </div>
               <div class="insight-box">
                 <span>基础计划</span>
                 <strong id="basePlanText">--</strong>
+                <small class="calc-formula">公式：不计真实事件，按月模拟至达成目标</small>
+                <small class="calc-values" id="basePlanDetailText">--</small>
               </div>
               <div class="insight-box">
                 <span>建议先存下</span>
                 <strong id="payYourselfText">--</strong>
+                <small class="calc-formula">公式：月总收入 × 先支付自己比例</small>
+                <small class="calc-values" id="payYourselfDetailText">--</small>
               </div>
             </section>
           </div>
@@ -505,6 +518,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260618-10"></script>
+    <script src="app.js?v=20260622-1"></script>
   </body>
 </html>
