@@ -712,6 +712,35 @@ textarea:focus {
   gap: 10px;
 }
 
+.dream-columns,
+.asset-debt-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.module-column {
+  min-width: 0;
+}
+
+.dream-columns .jar-grid {
+  grid-template-columns: 1fr;
+}
+
+.asset-debt-columns .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.asset-debt-columns .mortgage-period-record label {
+  flex-basis: 135px;
+}
+
+.asset-debt-columns .mortgage-period-record label:nth-of-type(5),
+.asset-debt-columns .mortgage-period-record label:nth-of-type(6) {
+  flex-basis: 180px;
+}
+
 .jar-card {
   display: grid;
   gap: 9px;
@@ -804,6 +833,11 @@ textarea:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dream-columns,
+  .asset-debt-columns {
+    grid-template-columns: 1fr;
+  }
+
   .two-column {
     grid-template-columns: 1fr;
   }
@@ -851,6 +885,16 @@ textarea:focus {
 
   .monthly-review-fields {
     grid-column: auto;
+  }
+
+  .asset-debt-columns .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-debt-columns .mortgage-period-record label,
+  .asset-debt-columns .mortgage-period-record label:nth-of-type(5),
+  .asset-debt-columns .mortgage-period-record label:nth-of-type(6) {
+    flex-basis: auto;
   }
 
   .title-actions,

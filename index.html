@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>财务自由目标规划 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260622-5" />
+    <link rel="stylesheet" href="styles.css?v=20260622-6" />
   </head>
   <body>
     <main class="app-shell">
@@ -268,12 +268,19 @@
               <label>先存比例 %<input data-v2-config="payYourselfRate" type="number" min="0" max="90" step="1" /></label>
               <label class="check-row"><input data-v2-config="debtFreeRequired" type="checkbox" /><span>目标要求无负债</span></label>
             </form>
-            <div class="stack-list" id="dreamList"></div>
-            <div class="record-title subsection-title">
-              <h4>梦想储蓄罐</h4>
-              <button class="ghost-button" id="addSavingsJarButton" type="button">新增储蓄罐</button>
+            <div class="dream-columns">
+              <section class="module-column">
+                <div class="record-title subsection-title"><h4>梦想清单</h4></div>
+                <div class="stack-list" id="dreamList"></div>
+              </section>
+              <section class="module-column">
+                <div class="record-title subsection-title">
+                  <h4>梦想储蓄罐</h4>
+                  <button class="ghost-button" id="addSavingsJarButton" type="button">新增储蓄罐</button>
+                </div>
+                <div class="jar-grid" id="savingsJarList"></div>
+              </section>
             </div>
-            <div class="jar-grid" id="savingsJarList"></div>
           </section>
 
           <section class="panel tab-panel" id="goose">
@@ -310,10 +317,16 @@
               </div>
             </div>
             <div class="debt-strip" id="debtSnapshot"></div>
-            <div class="record-title subsection-title"><h4>车辆与车贷</h4></div>
-            <div class="stack-list" id="carList"></div>
-            <div class="record-title subsection-title"><h4>房产与房贷</h4></div>
-            <div class="stack-list" id="propertyList"></div>
+            <div class="asset-debt-columns">
+              <section class="module-column">
+                <div class="record-title subsection-title"><h4>房产与房贷</h4></div>
+                <div class="stack-list" id="propertyList"></div>
+              </section>
+              <section class="module-column">
+                <div class="record-title subsection-title"><h4>车辆与车贷</h4></div>
+                <div class="stack-list" id="carList"></div>
+              </section>
+            </div>
           </section>
 
           <section class="panel tab-panel" id="children">
@@ -660,6 +673,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260622-5"></script>
+    <script src="app.js?v=20260622-6"></script>
   </body>
 </html>
