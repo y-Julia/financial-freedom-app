@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>财务自由目标规划 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260622-1" />
+    <link rel="stylesheet" href="styles.css?v=20260622-3" />
   </head>
   <body>
     <main class="app-shell">
@@ -13,19 +13,19 @@
           <div class="brand">
             <div class="brand-mark">芽</div>
             <div>
-              <h1>财务自由计划</h1>
+              <h1>家庭财务自由计划器</h1>
               <p>慢慢来，会变好</p>
             </div>
           </div>
 
           <nav class="steps" aria-label="页面步骤">
-            <a href="#status">现状</a>
-            <a href="#goal">目标</a>
-            <a href="#moneydog">梦想</a>
-            <a href="#property">房产</a>
-            <a href="#child">养娃</a>
+            <a href="#home">首页</a>
+            <a href="#monthly">每月记录</a>
+            <a href="#dreams">梦想</a>
+            <a href="#goose">鹅账户</a>
+            <a href="#debt-property">债务/房产</a>
             <a href="#events">事件</a>
-            <a href="#result">结果</a>
+            <a href="#review">复盘</a>
           </nav>
 
           <div class="nav-note">
@@ -38,55 +38,55 @@
           <header class="topbar">
             <div class="hero-copy">
               <h2>早安，愿你今天又离自由更近一步</h2>
-              <p class="hero-subtitle">记录生活、规划未来，把时间留给重要的人。</p>
+              <p class="hero-subtitle">先清账，再存未来。每一次复盘，都是在靠近自由。</p>
             </div>
             <div class="hero-actions">
-              <a class="secondary-link" href="#moneydog">写日记</a>
-              <a class="secondary-link" href="#goal">看目标</a>
+              <a class="secondary-link" href="#monthly">写本月记录</a>
+              <a class="secondary-link" href="#dreams">看目标</a>
               <button class="ghost-button" id="resetButton" type="button">恢复示例</button>
             </div>
           </header>
 
-          <section class="summary-grid tab-panel" id="result">
+          <section class="summary-grid tab-panel" id="home">
             <div class="metric highlight">
-              <span>预计达成时间</span>
-              <strong id="etaText">--</strong>
-              <small class="calc-formula" id="etaFormulaText">公式：按月模拟，资产达到目标且负债满足目标条件</small>
-              <small class="calc-values" id="etaDate">--</small>
+              <span>当前净资产</span>
+              <strong id="homeNetWorthText">--</strong>
+              <small class="calc-formula">公式：当前总资产 - 当前总负债</small>
+              <small class="calc-values" id="homeNetWorthDetail">--</small>
             </div>
             <div class="metric">
               <span>目标缺口</span>
-              <strong id="gapText">--</strong>
+              <strong id="homeGapText">--</strong>
               <small class="calc-formula" id="gapFormulaText">目标存款 + 需还负债 - 当前资产</small>
-              <small class="calc-values" id="gapDetailText">--</small>
+              <small class="calc-values" id="homeGapDetail">--</small>
             </div>
             <div class="metric">
-              <span>月净结余</span>
-              <strong id="monthlySurplusText">--</strong>
-              <small class="calc-formula">公式：工资 + 副业 + 租金 - 全部月支出</small>
-              <small class="calc-values" id="monthlySurplusDetailText">--</small>
+              <span>本月可存金额</span>
+              <strong id="homeSavableText">--</strong>
+              <small class="calc-formula" id="homeSavableFormula">公式：总收入 - 上月账单 - 固定支出</small>
+              <small class="calc-values" id="homeSavableDetail">--</small>
             </div>
             <div class="metric">
-              <span>事件影响</span>
-              <strong id="eventImpactText">--</strong>
-              <small class="calc-formula">公式：含事件达成月数 - 无事件达成月数</small>
-              <small class="calc-values" id="eventImpactDetailText">--</small>
+              <span>下月待还账单</span>
+              <strong id="homeNextBillText">--</strong>
+              <small class="calc-formula">公式：本月新增信用卡 + 花呗 + 其他待还</small>
+              <small class="calc-values" id="homeNextBillDetail">--</small>
             </div>
             <div class="metric">
-              <span>房产总盈亏</span>
-              <strong id="propertyProfitText">--</strong>
-              <small class="calc-formula">公式：所有已设置出售房产的净盈亏合计</small>
-              <small class="calc-values" id="propertyBreakEvenText">--</small>
+              <span>预计达成时间</span>
+              <strong id="homeEtaText">--</strong>
+              <small class="calc-formula">公式：目标缺口 ÷ 月均可存金额</small>
+              <small class="calc-values" id="homeEtaDetail">--</small>
             </div>
             <div class="metric">
-              <span>养娃月支出</span>
-              <strong id="childCostText">--</strong>
-              <small class="calc-formula">公式：基础月支出 + 教育金月储备</small>
-              <small class="calc-values" id="childStartText">--</small>
+              <span>鹅账户</span>
+              <strong id="homeGooseText">--</strong>
+              <small class="calc-formula">公式：当前鹅账户 ÷ 鹅账户目标</small>
+              <small class="calc-values" id="homeGooseDetail">--</small>
             </div>
           </section>
 
-          <section class="panel tab-panel" id="trendPanel" data-tab-group="result">
+          <section class="panel tab-panel" id="trendPanel" data-tab-group="home">
             <div class="section-title">
               <div>
                 <p class="eyebrow">Projection</p>
@@ -99,6 +99,48 @@
             </div>
             <canvas id="trendChart" width="1000" height="320" aria-label="资产趋势图"></canvas>
             <small class="calc-formula">公式：每月资产 = 上月资产 ×（1 + 月收益率）+ 当月收入 - 当月支出 ± 当月一次性事件；每月负债按还款本金和提前还款递减。</small>
+          </section>
+
+          <section class="dashboard-grid tab-panel" id="homeActions" data-tab-group="home">
+            <article class="panel action-panel">
+              <p class="eyebrow">本月工资分配</p>
+              <h3>先清账，再存未来</h3>
+              <div class="action-lines" id="homeAllocationLines"></div>
+              <a class="primary-link" href="#monthly">去记录本月数据</a>
+            </article>
+            <article class="panel action-panel">
+              <p class="eyebrow">下月账单提醒</p>
+              <h3 id="homeBillStatus">账单保持稳定</h3>
+              <p id="homeBillMessage">填写本月记录后，这里会提示下月现金流压力。</p>
+            </article>
+            <article class="panel action-panel">
+              <p class="eyebrow">梦想提醒</p>
+              <h3 id="homeDreamTitle">无负债 + 自由金</h3>
+              <p id="homeDreamAction">完成本月记录，看看今天可以向梦想走多远。</p>
+            </article>
+            <article class="panel action-panel">
+              <p class="eyebrow">最近的成功日记</p>
+              <h3 id="homeJournalTitle">这个月也值得被记录</h3>
+              <p id="homeJournalText">写下一件做对的事，让进步被看见。</p>
+              <a class="secondary-link" href="#review">写成功日记</a>
+            </article>
+          </section>
+
+          <section class="panel tab-panel" id="monthly">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Monthly Review</p>
+                <h3>每月记录</h3>
+                <p>每月只填一次。清完过去的账，再把剩下的钱交给未来。</p>
+              </div>
+              <div class="title-actions">
+                <input id="monthlyRecordMonth" type="month" aria-label="记录月份" />
+                <button class="ghost-button" id="newMonthlyRecordButton" type="button">新增月份</button>
+                <button class="primary-button" id="saveMonthlyRecordButton" type="button">保存本月记录</button>
+              </div>
+            </div>
+            <div class="monthly-layout" id="monthlyRecordForm"></div>
+            <div class="insight-grid" id="monthlyRecordSummary"></div>
           </section>
 
           <div class="two-column">
@@ -210,42 +252,60 @@
             </section>
           </div>
 
-          <section class="panel tab-panel" id="moneydog">
+          <section class="panel tab-panel" id="dreams">
             <div class="section-title">
               <div>
-                <p class="eyebrow">Money Dog</p>
-                <h3>梦想相册和成功日记</h3>
+                <p class="eyebrow">Dream First</p>
+                <h3>梦想清单与储蓄罐</h3>
+                <p>钱要为梦想服务。先写清楚为什么，再决定怎么存。</p>
               </div>
+              <button class="primary-button" id="addDreamButton" type="button">新增梦想</button>
             </div>
-
-            <form class="form-grid" id="moneyDogForm">
-              <label>
-                梦想画面
-                <textarea data-field="dreamScene"></textarea>
-              </label>
-              <label>
-                这个目标为什么重要
-                <textarea data-field="dreamReason"></textarea>
-              </label>
-              <label>
-                本月成功记录
-                <textarea data-field="successNote"></textarea>
-              </label>
-              <label>
-                下一个小行动
-                <textarea data-field="nextAction"></textarea>
-              </label>
+            <form class="form-grid compact target-config" id="v2TargetConfig">
+              <label>核心目标存款<input data-v2-config="targetCash" type="number" min="0" step="10000" /></label>
+              <label>存钱模式<select data-v2-config="savingMode"><option value="afterBills">还账后全存</option><option value="payFirst">先存后花</option></select></label>
+              <label>先存比例 %<input data-v2-config="payYourselfRate" type="number" min="0" max="90" step="1" /></label>
+              <label class="check-row"><input data-v2-config="debtFreeRequired" type="checkbox" /><span>目标要求无负债</span></label>
             </form>
+            <div class="stack-list" id="dreamList"></div>
+            <div class="record-title subsection-title">
+              <h4>梦想储蓄罐</h4>
+              <button class="ghost-button" id="addSavingsJarButton" type="button">新增储蓄罐</button>
+            </div>
+            <div class="jar-grid" id="savingsJarList"></div>
           </section>
 
-          <section class="panel tab-panel" id="property">
+          <section class="panel tab-panel" id="goose">
             <div class="section-title">
               <div>
-                <p class="eyebrow">Step 3</p>
-                <h3>房产回本预算</h3>
+                <p class="eyebrow">Goose Account</p>
+                <h3>鹅账户</h3>
+                <p>这是未来替你下蛋的长期资产，尽量不要轻易动用本金。</p>
+              </div>
+            </div>
+            <div class="goose-layout">
+              <form class="form-grid" id="gooseForm">
+                <label>当前鹅账户金额<input data-goose-field="amount" type="number" min="0" step="1000" /></label>
+                <label>本月喂鹅金额<input data-goose-field="monthlyAdded" type="number" min="0" step="500" /></label>
+                <label>鹅账户目标<input data-goose-field="target" type="number" min="0" step="10000" /></label>
+                <label>预期年化收益率 %<input data-goose-field="annualReturn" type="number" min="0" max="30" step="0.1" /></label>
+                <label class="check-row"><input data-goose-field="principalLocked" type="checkbox" /><span>不轻易动用本金</span></label>
+                <label>投资内容说明<textarea data-goose-field="note"></textarea></label>
+              </form>
+              <div class="insight-grid" id="gooseSummary"></div>
+            </div>
+          </section>
+
+          <section class="panel tab-panel" id="debt-property">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Debt & Property</p>
+                <h3>债务与房产</h3>
+                <p>家庭总负债只读取最新月度记录；房产卡用于分析现金流和出售假设，不重复计入。</p>
               </div>
               <button class="primary-button" id="addPropertyButton" type="button">新增房产</button>
             </div>
+            <div class="debt-strip" id="debtSnapshot"></div>
             <div class="stack-list" id="propertyList"></div>
           </section>
 
@@ -271,6 +331,21 @@
 
             <div class="event-list" id="eventList"></div>
           </section>
+
+          <section class="panel tab-panel" id="review">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Monthly Review</p>
+                <h3>复盘与成功日记</h3>
+                <p>看见这个月做对的事，再为下个月只选一个重点。</p>
+              </div>
+              <button class="primary-button" id="addJournalButton" type="button">写成功日记</button>
+            </div>
+            <div class="review-grid">
+              <div class="stack-list" id="journalList"></div>
+              <article class="panel review-summary" id="monthlyReviewSummary"></article>
+            </div>
+          </section>
         </section>
       </section>
     </main>
@@ -291,6 +366,10 @@
               <option value="oneTimeExpense">一次性支出</option>
               <option value="debtDelta">负债变化</option>
               <option value="unemployed">失业</option>
+              <option value="childBirth">孩子出生/育儿支出</option>
+              <option value="maternityLeave">产假收入减少</option>
+              <option value="prepayment">提前还贷</option>
+              <option value="sideGrowth">副业增长</option>
             </select>
           </label>
           <label>
@@ -330,7 +409,7 @@
           <label>初始贷款金额<input data-property-field="loanInitial" type="number" min="0" step="10000" /></label>
           <label>装修费用<input data-property-field="renovation" type="number" min="0" step="10000" /></label>
           <label>契税/中介/购房杂费<input data-property-field="purchaseFees" type="number" min="0" step="1000" /></label>
-          <label class="check-row"><input data-property-field="includeInPlan" type="checkbox" /><span>接入总目标推算</span></label>
+          <label class="check-row"><input data-property-field="includeInPlan" type="checkbox" /><span>纳入房产现金流分析</span></label>
         </div>
 
         <div class="record-section">
@@ -518,6 +597,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260622-1"></script>
+    <script src="app.js?v=20260622-3"></script>
   </body>
 </html>

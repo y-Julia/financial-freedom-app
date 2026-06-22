@@ -107,7 +107,77 @@ function withoutUndefined(value) {
   );
 }
 
+function createMonthlyRecord(overrides = {}) {
+  const base = {
+    id: id(),
+    month: monthKeyFromDate(new Date()),
+    salaryIncome: 20000,
+    sideIncome: 3000,
+    rentIncome: 2600,
+    otherIncome: 0,
+    lastCreditCardBill: 5000,
+    lastHuabeiBill: 0,
+    otherLastBill: 0,
+    mortgagePayment: 5000,
+    carLoanPayment: 3000,
+    rentPayment: 0,
+    insurancePayment: 0,
+    fixedOtherPayment: 1000,
+    actualCashSaved: 10500,
+    gooseAdded: 1000,
+    earlyDebtPayment: 0,
+    currentCreditCardBill: 4500,
+    currentHuabeiBill: 0,
+    otherNextBill: 0,
+    cashAsset: 100000,
+    gooseAsset: 50000,
+    mortgageBalance: 300000,
+    carLoanBalance: 100000,
+    otherDebt: 0,
+    successNote: "这个月认真完成了一次家庭财务复盘。",
+    monthlyReview: "账单保持稳定，存款继续增加。",
+    nextFocus: "下个月继续控制信用账单增长。",
+  };
+  return { ...base, ...withoutUndefined(overrides) };
+}
+
+function createDream(overrides = {}) {
+  return {
+    id: id(),
+    name: "无负债 + 100万自由金",
+    amount: 1000000,
+    targetDate: "",
+    reason: "让家庭拥有选择工作的底气。",
+    currentAmount: 0,
+    status: "inProgress",
+    ...withoutUndefined(overrides),
+  };
+}
+
+function createSavingsJar(overrides = {}) {
+  return {
+    id: id(),
+    name: "安全垫罐",
+    target: 60000,
+    current: 0,
+    monthlyPlan: 1000,
+    ...withoutUndefined(overrides),
+  };
+}
+
+function createJournal(overrides = {}) {
+  return {
+    id: id(),
+    date: toDateInputValue(new Date()),
+    month: monthKeyFromDate(new Date()),
+    content: "这个月又把一部分钱交给了未来的自己。",
+    mood: "steady",
+    ...withoutUndefined(overrides),
+  };
+}
+
 const defaultState = {
+  savingMode: "afterBills",
   cash: 100000,
   investments: 50000,
   mortgageDebt: 300000,
@@ -128,6 +198,24 @@ const defaultState = {
   dreamReason: "给家庭更多选择权",
   successNote: "本月开始认真记录现金流",
   nextAction: "先把收入的 20% 存进目标账户",
+  monthlyRecords: [createMonthlyRecord()],
+  goose: {
+    amount: 50000,
+    monthlyAdded: 1000,
+    target: 200000,
+    annualReturn: 3,
+    principalLocked: true,
+    note: "长期投资账户",
+  },
+  dreams: [createDream()],
+  savingsJars: [
+    createSavingsJar({ name: "安全垫罐", target: 60000, current: 10000 }),
+    createSavingsJar({ name: "还债罐", target: 50000, current: 0 }),
+    createSavingsJar({ name: "鹅账户", target: 200000, current: 50000 }),
+    createSavingsJar({ name: "孩子未来罐", target: 100000, current: 0 }),
+    createSavingsJar({ name: "自由金罐", target: 1000000, current: 100000 }),
+  ],
+  journals: [createJournal()],
   properties: [createProperty()],
   children: [createChild()],
   events: [
@@ -156,7 +244,7 @@ let state = loadState();
 let formBound = false;
 let saveStateTimer = null;
 let renderResultsTimer = null;
-const TAB_IDS = ["status", "goal", "moneydog", "property", "child", "events", "result"];
+const TAB_IDS = ["home", "monthly", "dreams", "goose", "debt-property", "events", "review"];
 
 const numberFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const currencyFormatter = new Intl.NumberFormat("zh-CN", {
@@ -237,9 +325,41 @@ function normalizeState(saved) {
     cashflows: saved.childCashflows || (saved.childExpenses || []).map((item) => ({ ...item, direction: "expense" })),
   });
 
+  const migratedMonthlyRecord = createMonthlyRecord({
+    month: monthKeyFromDate(new Date()),
+    salaryIncome: saved.salary,
+    sideIncome: saved.sideIncome,
+    rentIncome: saved.propertyMonthlyRent || 0,
+    mortgagePayment: saved.mortgagePayment,
+    carLoanPayment: saved.carPayment,
+    fixedOtherPayment: saved.fixedCost,
+    cashAsset: saved.cash,
+    gooseAsset: saved.investments,
+    mortgageBalance: saved.mortgageDebt,
+    carLoanBalance: saved.carDebt,
+    otherDebt: saved.otherDebt,
+    successNote: saved.successNote,
+    nextFocus: saved.nextAction,
+  });
+
   return {
     ...structuredClone(defaultState),
     ...saved,
+    monthlyRecords: Array.isArray(saved.monthlyRecords) && saved.monthlyRecords.length
+      ? saved.monthlyRecords.map(normalizeMonthlyRecord)
+      : [normalizeMonthlyRecord(migratedMonthlyRecord)],
+    goose: {
+      ...structuredClone(defaultState.goose),
+      ...(saved.goose || {}),
+      amount: toNumber(saved.goose?.amount ?? saved.investments ?? defaultState.goose.amount),
+    },
+    dreams: Array.isArray(saved.dreams) && saved.dreams.length
+      ? saved.dreams.map((dream) => createDream(dream))
+      : [createDream({ name: saved.goalName, amount: saved.targetCash, reason: saved.dreamReason })],
+    savingsJars: Array.isArray(saved.savingsJars) ? saved.savingsJars.map((jar) => createSavingsJar(jar)) : structuredClone(defaultState.savingsJars),
+    journals: Array.isArray(saved.journals) && saved.journals.length
+      ? saved.journals.map((journal) => createJournal(journal))
+      : [createJournal({ content: saved.successNote })],
     properties: Array.isArray(saved.properties)
       ? saved.properties.map((property, index) => normalizeProperty(property, index))
       : [normalizeProperty(migratedProperty, 0)],
@@ -250,6 +370,14 @@ function normalizeState(saved) {
       ? saved.events.map((event, index) => normalizeEvent(event, index))
       : structuredClone(defaultState.events),
   };
+}
+
+function normalizeMonthlyRecord(record) {
+  const normalized = createMonthlyRecord(record);
+  Object.keys(normalized).forEach((key) => {
+    if (!["id", "month", "successNote", "monthlyReview", "nextFocus"].includes(key)) normalized[key] = toNumber(normalized[key]);
+  });
+  return normalized;
 }
 
 function normalizeEvent(event, index) {
@@ -1492,6 +1620,9 @@ function renderEvents() {
   list.innerHTML = "";
   state.events.forEach((event) => {
     const node = template.content.firstElementChild.cloneNode(true);
+    const impactBox = document.createElement("div");
+    impactBox.className = "event-impact";
+    const updateImpact = () => { impactBox.innerHTML = eventImpactHtml(event); };
     node.querySelectorAll("[data-event-field]").forEach((input) => {
       const field = input.dataset.eventField;
       input.value = event[field] ?? "";
@@ -1499,6 +1630,7 @@ function renderEvents() {
         event[field] = readInputValue(input);
         saveState();
         scheduleRenderResults();
+        updateImpact();
       });
     });
     node.querySelector(".delete-event").addEventListener("click", () => {
@@ -1506,8 +1638,337 @@ function renderEvents() {
       saveState();
       render();
     });
+    updateImpact();
+    node.appendChild(impactBox);
     list.appendChild(node);
   });
+}
+
+function eventImpactHtml(event) {
+  const latest = getLatestMonthlyRecord();
+  const base = getMonthlyRecordSummary(latest);
+  if (!base) return "";
+  const amount = toNumber(event.amount);
+  let monthlyDelta = 0;
+  let oneTimeDelta = 0;
+  if (["incomeDelta", "sideGrowth"].includes(event.type)) monthlyDelta = amount;
+  if (["expenseDelta", "childBirth"].includes(event.type)) monthlyDelta = -amount;
+  if (event.type === "maternityLeave") monthlyDelta = -amount;
+  if (event.type === "unemployed") monthlyDelta = -toNumber(latest.salaryIncome);
+  if (event.type === "oneTimeIncome") oneTimeDelta = amount;
+  if (["oneTimeExpense", "prepayment"].includes(event.type)) oneTimeDelta = -amount;
+  if (event.type === "debtDelta") oneTimeDelta = -amount;
+  const during = base.savable + monthlyDelta;
+  return insight(
+    "事件期间月可存金额",
+    money(during),
+    "当前月可存金额 + 事件月度影响",
+    `${exactMoney(base.savable)} ${monthlyDelta >= 0 ? "+" : "-"} ${exactMoney(Math.abs(monthlyDelta))} = ${exactMoney(during)}${oneTimeDelta ? `；一次性现金/负债影响 ${exactMoney(oneTimeDelta)}` : ""}`,
+  );
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function getLatestMonthlyRecord() {
+  return [...(state.monthlyRecords || [])].sort((a, b) => String(b.month).localeCompare(String(a.month)))[0] || null;
+}
+
+function getMonthlyRecordSummary(record) {
+  if (!record) return null;
+  const totalIncome = toNumber(record.salaryIncome) + toNumber(record.sideIncome) + toNumber(record.rentIncome) + toNumber(record.otherIncome);
+  const lastBills = toNumber(record.lastCreditCardBill) + toNumber(record.lastHuabeiBill) + toNumber(record.otherLastBill);
+  const fixedExpenses = toNumber(record.mortgagePayment) + toNumber(record.carLoanPayment) + toNumber(record.rentPayment) + toNumber(record.insurancePayment) + toNumber(record.fixedOtherPayment);
+  const afterBillsSavable = totalIncome - lastBills - fixedExpenses;
+  const payFirstSavable = toNumber(record.salaryIncome) * (toNumber(state.payYourselfRate) / 100);
+  const savable = state.savingMode === "payFirst" ? payFirstSavable : afterBillsSavable;
+  const actuallySaved = toNumber(record.actualCashSaved) + toNumber(record.gooseAdded) + toNumber(record.earlyDebtPayment);
+  const nextBills = toNumber(record.currentCreditCardBill) + toNumber(record.currentHuabeiBill) + toNumber(record.otherNextBill);
+  const billChange = nextBills - lastBills;
+  const totalAssets = toNumber(record.cashAsset) + toNumber(record.gooseAsset);
+  const totalDebt = toNumber(record.mortgageBalance) + toNumber(record.carLoanBalance) + toNumber(record.otherDebt);
+  const netWorth = totalAssets - totalDebt;
+  const targetGap = Math.max(0, toNumber(state.targetCash) + (state.debtFreeRequired ? totalDebt : 0) - totalAssets);
+  const etaMonths = savable > 0 ? Math.ceil(targetGap / savable) : Infinity;
+  return { totalIncome, lastBills, fixedExpenses, afterBillsSavable, payFirstSavable, savable, actuallySaved, nextBills, billChange, totalAssets, totalDebt, netWorth, targetGap, etaMonths };
+}
+
+function syncLegacyFromMonthly(record) {
+  state.cash = toNumber(record.cashAsset);
+  state.investments = toNumber(record.gooseAsset);
+  state.mortgageDebt = toNumber(record.mortgageBalance);
+  state.carDebt = toNumber(record.carLoanBalance);
+  state.otherDebt = toNumber(record.otherDebt);
+  state.salary = toNumber(record.salaryIncome);
+  state.sideIncome = toNumber(record.sideIncome) + toNumber(record.otherIncome);
+  state.mortgagePayment = toNumber(record.mortgagePayment);
+  state.carPayment = toNumber(record.carLoanPayment);
+  state.fixedCost = toNumber(record.rentPayment) + toNumber(record.insurancePayment) + toNumber(record.fixedOtherPayment);
+  state.goose.amount = toNumber(record.gooseAsset);
+  state.goose.monthlyAdded = toNumber(record.gooseAdded);
+}
+
+const monthlyGroups = [
+  ["收入", [["salaryIncome", "工资收入"], ["sideIncome", "副业收入"], ["rentIncome", "房租收入"], ["otherIncome", "其他收入"]]],
+  ["还清上月账单", [["lastCreditCardBill", "上月信用卡账单"], ["lastHuabeiBill", "上月花呗账单"], ["otherLastBill", "其他上月消费账单"]]],
+  ["本月固定支出", [["mortgagePayment", "房贷"], ["carLoanPayment", "车贷"], ["rentPayment", "房租"], ["insurancePayment", "保险/社保/固定缴费"], ["fixedOtherPayment", "其他固定支出"]]],
+  ["本月存下", [["actualCashSaved", "实际存入现金"], ["gooseAdded", "鹅账户新增"], ["earlyDebtPayment", "提前还贷金额"]]],
+  ["本月新增账单（下月待还）", [["currentCreditCardBill", "本月信用卡新增消费"], ["currentHuabeiBill", "本月花呗新增消费"], ["otherNextBill", "其他下月待还"]]],
+  ["月末资产负债快照", [["cashAsset", "当前现金存款"], ["gooseAsset", "当前鹅账户金额"], ["mortgageBalance", "房贷余额"], ["carLoanBalance", "车贷余额"], ["otherDebt", "其他负债"]]],
+];
+
+function renderMonthlyRecord() {
+  const form = document.querySelector("#monthlyRecordForm");
+  const monthInput = document.querySelector("#monthlyRecordMonth");
+  if (!form || !monthInput) return;
+  let record = state.monthlyRecords.find((item) => item.month === monthInput.value) || getLatestMonthlyRecord();
+  if (!record) {
+    record = createMonthlyRecord();
+    state.monthlyRecords.push(record);
+  }
+  monthInput.value = record.month;
+  form.innerHTML = monthlyGroups.map(([title, fields]) => `
+    <fieldset class="monthly-group">
+      <legend>${title}</legend>
+      <div class="form-grid compact">
+        ${fields.map(([field, label]) => `<label>${label}<input data-monthly-field="${field}" type="number" min="0" step="100" value="${toNumber(record[field])}" /></label>`).join("")}
+      </div>
+    </fieldset>`).join("") + `
+    <fieldset class="monthly-group monthly-review-fields">
+      <legend>月度复盘</legend>
+      <div class="form-grid">
+        <label>本月做得好的事<textarea data-monthly-field="successNote">${escapeHtml(record.successNote)}</textarea></label>
+        <label>本月需要注意的事<textarea data-monthly-field="monthlyReview">${escapeHtml(record.monthlyReview)}</textarea></label>
+        <label>下个月只改进一件事<textarea data-monthly-field="nextFocus">${escapeHtml(record.nextFocus)}</textarea></label>
+      </div>
+    </fieldset>`;
+  form.querySelectorAll("[data-monthly-field]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const field = input.dataset.monthlyField;
+      record[field] = input.type === "number" ? toNumber(input.value) : input.value;
+      syncLegacyFromMonthly(record);
+      saveState();
+      renderMonthlySummary(record);
+      renderV2Home();
+      renderDebtSnapshot();
+    });
+  });
+  renderMonthlySummary(record);
+}
+
+function renderMonthlySummary(record) {
+  const container = document.querySelector("#monthlyRecordSummary");
+  if (!container) return;
+  const result = getMonthlyRecordSummary(record);
+  container.innerHTML = [
+    insight("总收入", money(result.totalIncome), "工资 + 副业 + 房租 + 其他收入", `${exactMoney(record.salaryIncome)} + ${exactMoney(record.sideIncome)} + ${exactMoney(record.rentIncome)} + ${exactMoney(record.otherIncome)} = ${exactMoney(result.totalIncome)}`),
+    insight("上月账单合计", money(result.lastBills), "信用卡 + 花呗 + 其他上月账单", `${exactMoney(record.lastCreditCardBill)} + ${exactMoney(record.lastHuabeiBill)} + ${exactMoney(record.otherLastBill)} = ${exactMoney(result.lastBills)}`),
+    insight("固定支出合计", money(result.fixedExpenses), "房贷 + 车贷 + 房租 + 保险固定缴费 + 其他", `${exactMoney(record.mortgagePayment)} + ${exactMoney(record.carLoanPayment)} + ${exactMoney(record.rentPayment)} + ${exactMoney(record.insurancePayment)} + ${exactMoney(record.fixedOtherPayment)} = ${exactMoney(result.fixedExpenses)}`),
+    insight(
+      state.savingMode === "payFirst" ? "本月建议先存" : "本月可存金额",
+      money(result.savable),
+      state.savingMode === "payFirst" ? "工资收入 × 先存比例" : "总收入 - 上月账单 - 固定支出",
+      state.savingMode === "payFirst" ? `${exactMoney(record.salaryIncome)} × ${toNumber(state.payYourselfRate)}% = ${exactMoney(result.savable)}` : `${exactMoney(result.totalIncome)} - ${exactMoney(result.lastBills)} - ${exactMoney(result.fixedExpenses)} = ${exactMoney(result.savable)}`,
+    ),
+    insight("本月实际存下", money(result.actuallySaved), "存入现金 + 喂鹅 + 提前还贷", `${exactMoney(record.actualCashSaved)} + ${exactMoney(record.gooseAdded)} + ${exactMoney(record.earlyDebtPayment)} = ${exactMoney(result.actuallySaved)}`),
+    insight("下月待还账单", money(result.nextBills), "本月新增信用卡 + 花呗 + 其他待还", `${exactMoney(record.currentCreditCardBill)} + ${exactMoney(record.currentHuabeiBill)} + ${exactMoney(record.otherNextBill)} = ${exactMoney(result.nextBills)}`),
+    insight("家庭净资产", money(result.netWorth), "当前总资产 - 当前总负债", `${exactMoney(result.totalAssets)} - ${exactMoney(result.totalDebt)} = ${exactMoney(result.netWorth)}`),
+  ].join("");
+}
+
+function createNextMonthlyRecord(month) {
+  const previous = getLatestMonthlyRecord();
+  if (!previous) return createMonthlyRecord({ month });
+  return createMonthlyRecord({
+    ...previous,
+    id: id(),
+    month,
+    lastCreditCardBill: previous.currentCreditCardBill,
+    lastHuabeiBill: previous.currentHuabeiBill,
+    otherLastBill: previous.otherNextBill,
+    actualCashSaved: 0,
+    gooseAdded: 0,
+    earlyDebtPayment: 0,
+    currentCreditCardBill: 0,
+    currentHuabeiBill: 0,
+    otherNextBill: 0,
+    successNote: "",
+    monthlyReview: "",
+    nextFocus: "",
+  });
+}
+
+function renderV2Home() {
+  const record = getLatestMonthlyRecord();
+  if (!record) return;
+  const result = getMonthlyRecordSummary(record);
+  document.querySelector("#homeNetWorthText").textContent = money(result.netWorth);
+  document.querySelector("#homeNetWorthDetail").textContent = `代入：${exactMoney(result.totalAssets)} - ${exactMoney(result.totalDebt)} = ${exactMoney(result.netWorth)}`;
+  document.querySelector("#homeGapText").textContent = money(result.targetGap);
+  document.querySelector("#gapFormulaText").textContent = state.debtFreeRequired ? "公式：目标存款 + 总负债 - 当前总资产" : "公式：目标存款 - 当前总资产";
+  document.querySelector("#homeGapDetail").textContent = state.debtFreeRequired
+    ? `代入：${exactMoney(state.targetCash)} + ${exactMoney(result.totalDebt)} - ${exactMoney(result.totalAssets)} = ${exactMoney(result.targetGap)}`
+    : `代入：${exactMoney(state.targetCash)} - ${exactMoney(result.totalAssets)} = ${exactMoney(result.targetGap)}`;
+  document.querySelector("#homeSavableText").textContent = money(result.savable);
+  document.querySelector("#homeSavableFormula").textContent = state.savingMode === "payFirst" ? "公式：工资收入 × 先存比例" : "公式：总收入 - 上月账单 - 固定支出";
+  document.querySelector("#homeSavableDetail").textContent = state.savingMode === "payFirst"
+    ? `代入：${exactMoney(record.salaryIncome)} × ${toNumber(state.payYourselfRate)}% = ${exactMoney(result.savable)}`
+    : `代入：${exactMoney(result.totalIncome)} - ${exactMoney(result.lastBills)} - ${exactMoney(result.fixedExpenses)} = ${exactMoney(result.savable)}`;
+  document.querySelector("#homeNextBillText").textContent = money(result.nextBills);
+  document.querySelector("#homeNextBillDetail").textContent = `代入：${exactMoney(record.currentCreditCardBill)} + ${exactMoney(record.currentHuabeiBill)} + ${exactMoney(record.otherNextBill)} = ${exactMoney(result.nextBills)}`;
+  document.querySelector("#homeEtaText").textContent = formatDuration(result.etaMonths);
+  document.querySelector("#homeEtaDetail").textContent = Number.isFinite(result.etaMonths) ? `代入：${exactMoney(result.targetGap)} ÷ ${exactMoney(result.savable)} = ${result.etaMonths}个月` : "代入：本月可存金额不大于0，暂时无法估算";
+  const gooseTarget = toNumber(state.goose.target);
+  const gooseProgress = gooseTarget > 0 ? toNumber(state.goose.amount) / gooseTarget : 0;
+  document.querySelector("#homeGooseText").textContent = money(state.goose.amount);
+  document.querySelector("#homeGooseDetail").textContent = `代入：${exactMoney(state.goose.amount)} ÷ ${exactMoney(gooseTarget)} = ${(gooseProgress * 100).toFixed(1)}%`;
+  document.querySelector("#homeAllocationLines").innerHTML = [
+    ["本月总收入", result.totalIncome], ["还上月账单", -result.lastBills], ["固定支出", -result.fixedExpenses], ["本月可存金额", result.savable],
+  ].map(([label, value]) => `<div><span>${label}</span><strong>${exactMoney(value)}</strong></div>`).join("");
+  const billStatus = result.billChange > 0 ? "下月待还账单增加" : result.billChange < 0 ? "本月消费压力下降" : "账单保持稳定";
+  document.querySelector("#homeBillStatus").textContent = billStatus;
+  document.querySelector("#homeBillMessage").textContent = `上月账单 ${exactMoney(result.lastBills)}，下月待还 ${exactMoney(result.nextBills)}，变化 ${exactMoney(result.billChange)}。`;
+  const mainDream = state.dreams.find((dream) => dream.status !== "done") || state.dreams[0];
+  document.querySelector("#homeDreamTitle").textContent = mainDream?.name || state.goalName;
+  document.querySelector("#homeDreamAction").textContent = `本月行动：争取存下 ${exactMoney(result.savable)}，同时让下月账单不增长。`;
+  const journal = [...state.journals].sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  document.querySelector("#homeJournalText").textContent = journal?.content || "写下一件做对的事，让进步被看见。";
+  drawChart([...state.monthlyRecords].sort((a, b) => String(a.month).localeCompare(String(b.month))).map((item, index) => {
+    const summary = getMonthlyRecordSummary(item);
+    return { month: index, cash: summary.totalAssets, debt: summary.totalDebt };
+  }));
+}
+
+function renderDreamsV2() {
+  const list = document.querySelector("#dreamList");
+  const jars = document.querySelector("#savingsJarList");
+  if (!list || !jars) return;
+  document.querySelectorAll("[data-v2-config]").forEach((input) => {
+    const field = input.dataset.v2Config;
+    if (input.type === "checkbox") input.checked = Boolean(state[field]);
+    else input.value = state[field] ?? "";
+    input.oninput = () => {
+      state[field] = input.type === "checkbox" ? input.checked : input.type === "number" ? toNumber(input.value) : input.value;
+      saveState(); renderV2Home(); renderMonthlySummary(getLatestMonthlyRecord());
+    };
+  });
+  list.innerHTML = state.dreams.map((dream) => `
+    <article class="entity-card dream-card" data-dream-id="${dream.id}">
+      <div class="entity-head"><input class="entity-name" data-dream-field="name" value="${escapeHtml(dream.name)}" /><button class="icon-button delete-dream" type="button">×</button></div>
+      <div class="form-grid compact">
+        <label>目标金额<input data-dream-field="amount" type="number" min="0" value="${toNumber(dream.amount)}" /></label>
+        <label>当前金额<input data-dream-field="currentAmount" type="number" min="0" value="${toNumber(dream.currentAmount)}" /></label>
+        <label>目标时间<input data-dream-field="targetDate" type="date" value="${escapeHtml(dream.targetDate)}" /></label>
+        <label>当前状态<select data-dream-field="status"><option value="notStarted">未开始</option><option value="inProgress">进行中</option><option value="done">已完成</option></select></label>
+        <label>为什么重要<textarea data-dream-field="reason">${escapeHtml(dream.reason)}</textarea></label>
+      </div>
+      <div class="progress-track"><span style="width:${Math.min(100, toNumber(dream.amount) > 0 ? toNumber(dream.currentAmount) / toNumber(dream.amount) * 100 : 0)}%"></span></div>
+      <small class="calc-values">进度：${exactMoney(dream.currentAmount)} ÷ ${exactMoney(dream.amount)} = ${(toNumber(dream.amount) > 0 ? toNumber(dream.currentAmount) / toNumber(dream.amount) * 100 : 0).toFixed(1)}%</small>
+    </article>`).join("");
+  list.querySelectorAll("[data-dream-id]").forEach((card) => {
+    const dream = state.dreams.find((item) => item.id === card.dataset.dreamId);
+    card.querySelector(`[data-dream-field="status"]`).value = dream.status;
+    card.querySelectorAll("[data-dream-field]").forEach((input) => input.addEventListener("change", () => {
+      dream[input.dataset.dreamField] = input.type === "number" ? toNumber(input.value) : input.value;
+      saveState(); renderDreamsV2(); renderV2Home();
+    }));
+    card.querySelector(".delete-dream").addEventListener("click", () => { state.dreams = state.dreams.filter((item) => item.id !== dream.id); saveStateNow(); renderDreamsV2(); });
+  });
+  jars.innerHTML = state.savingsJars.map((jar) => `
+    <article class="jar-card" data-jar-id="${jar.id}">
+      <div class="entity-head"><input class="entity-name" data-jar-field="name" value="${escapeHtml(jar.name)}" /><button class="icon-button delete-jar" type="button">×</button></div>
+      <label>目标<input data-jar-field="target" type="number" min="0" value="${toNumber(jar.target)}" /></label>
+      <label>当前<input data-jar-field="current" type="number" min="0" value="${toNumber(jar.current)}" /></label>
+      <label>每月计划<input data-jar-field="monthlyPlan" type="number" min="0" value="${toNumber(jar.monthlyPlan)}" /></label>
+      <div class="progress-track"><span style="width:${Math.min(100, toNumber(jar.target) > 0 ? toNumber(jar.current) / toNumber(jar.target) * 100 : 0)}%"></span></div>
+      <small>${exactMoney(jar.current)} / ${exactMoney(jar.target)}</small>
+    </article>`).join("");
+  jars.querySelectorAll("[data-jar-id]").forEach((card) => {
+    const jar = state.savingsJars.find((item) => item.id === card.dataset.jarId);
+    card.querySelectorAll("[data-jar-field]").forEach((input) => input.addEventListener("change", () => { jar[input.dataset.jarField] = input.type === "number" ? toNumber(input.value) : input.value; saveState(); renderDreamsV2(); }));
+    card.querySelector(".delete-jar").addEventListener("click", () => { state.savingsJars = state.savingsJars.filter((item) => item.id !== jar.id); saveStateNow(); renderDreamsV2(); });
+  });
+}
+
+function renderGooseV2() {
+  const form = document.querySelector("#gooseForm");
+  const summary = document.querySelector("#gooseSummary");
+  if (!form || !summary) return;
+  form.querySelectorAll("[data-goose-field]").forEach((input) => {
+    const field = input.dataset.gooseField;
+    if (input.type === "checkbox") input.checked = Boolean(state.goose[field]);
+    else input.value = state.goose[field] ?? "";
+    input.oninput = () => {
+      state.goose[field] = input.type === "checkbox" ? input.checked : input.type === "number" ? toNumber(input.value) : input.value;
+      const latest = getLatestMonthlyRecord();
+      if (field === "amount" && latest) { latest.gooseAsset = state.goose.amount; syncLegacyFromMonthly(latest); }
+      saveState(); renderGooseSummary(); renderV2Home();
+    };
+  });
+  renderGooseSummary();
+}
+
+function renderGooseSummary() {
+  const summary = document.querySelector("#gooseSummary");
+  if (!summary) return;
+  const progress = toNumber(state.goose.target) > 0 ? toNumber(state.goose.amount) / toNumber(state.goose.target) : 0;
+  const yearLater = toNumber(state.goose.amount) * (1 + toNumber(state.goose.annualReturn) / 100) + toNumber(state.goose.monthlyAdded) * 12;
+  summary.innerHTML = [
+    insight("鹅账户当前金额", money(state.goose.amount), "读取长期投资资产", exactMoney(state.goose.amount)),
+    insight("本月喂鹅金额", money(state.goose.monthlyAdded), "本月新增长期投资", exactMoney(state.goose.monthlyAdded)),
+    insight("鹅账户进度", `${(progress * 100).toFixed(1)}%`, "当前金额 ÷ 目标金额", `${exactMoney(state.goose.amount)} ÷ ${exactMoney(state.goose.target)}`),
+    insight("预计一年后金额", money(yearLater), "当前金额 ×（1 + 年化收益率）+ 月新增 × 12", `${exactMoney(state.goose.amount)} × (1 + ${toNumber(state.goose.annualReturn)}%) + ${exactMoney(state.goose.monthlyAdded)} × 12 = ${exactMoney(yearLater)}`),
+  ].join("");
+}
+
+function renderDebtSnapshot() {
+  const container = document.querySelector("#debtSnapshot");
+  const record = getLatestMonthlyRecord();
+  if (!container || !record) return;
+  const result = getMonthlyRecordSummary(record);
+  container.innerHTML = [
+    insight("房贷余额", money(record.mortgageBalance), "读取最新月度记录", exactMoney(record.mortgageBalance)),
+    insight("车贷余额", money(record.carLoanBalance), "读取最新月度记录", exactMoney(record.carLoanBalance)),
+    insight("其他负债", money(record.otherDebt), "读取最新月度记录", exactMoney(record.otherDebt)),
+    insight("家庭总负债", money(result.totalDebt), "房贷 + 车贷 + 其他负债", `${exactMoney(record.mortgageBalance)} + ${exactMoney(record.carLoanBalance)} + ${exactMoney(record.otherDebt)} = ${exactMoney(result.totalDebt)}`),
+  ].join("");
+}
+
+function renderReviewV2() {
+  const list = document.querySelector("#journalList");
+  const summary = document.querySelector("#monthlyReviewSummary");
+  if (!list || !summary) return;
+  list.innerHTML = [...state.journals].sort((a, b) => String(b.date).localeCompare(String(a.date))).map((journal) => `
+    <article class="record-card journal-card" data-journal-id="${journal.id}">
+      <label>日期<input data-journal-field="date" type="date" value="${journal.date}" /></label>
+      <label>所属月份<input data-journal-field="month" type="month" value="${journal.month}" /></label>
+      <label>成功事项<textarea data-journal-field="content">${escapeHtml(journal.content)}</textarea></label>
+      <label>心情<select data-journal-field="mood"><option value="steady">平静</option><option value="happy">开心</option><option value="proud">自豪</option><option value="tired">有点累</option></select></label>
+      <button class="icon-button delete-journal" type="button">×</button>
+    </article>`).join("");
+  list.querySelectorAll("[data-journal-id]").forEach((card) => {
+    const journal = state.journals.find((item) => item.id === card.dataset.journalId);
+    card.querySelector(`[data-journal-field="mood"]`).value = journal.mood;
+    card.querySelectorAll("[data-journal-field]").forEach((input) => input.addEventListener("input", () => { journal[input.dataset.journalField] = input.value; saveState(); renderV2Home(); }));
+    card.querySelector(".delete-journal").addEventListener("click", () => { state.journals = state.journals.filter((item) => item.id !== journal.id); saveStateNow(); renderReviewV2(); renderV2Home(); });
+  });
+  const latest = getLatestMonthlyRecord();
+  const result = getMonthlyRecordSummary(latest);
+  const previous = [...state.monthlyRecords].sort((a, b) => String(b.month).localeCompare(String(a.month)))[1];
+  const previousResult = previous ? getMonthlyRecordSummary(previous) : null;
+  const netChange = previousResult ? result.netWorth - previousResult.netWorth : 0;
+  summary.innerHTML = latest ? `
+    <p class="eyebrow">${latest.month} 月度总结</p>
+    <h3>这个月，你把 ${exactMoney(result.actuallySaved)} 交给了未来的自己。</h3>
+    <p>下月待还账单 ${exactMoney(result.nextBills)}，家庭净资产 ${previousResult ? `较上月变化 ${exactMoney(netChange)}` : `为 ${exactMoney(result.netWorth)}`}。</p>
+    <div class="review-copy"><strong>做得好的事</strong><p>${escapeHtml(latest.successNote || "还没有填写")}</p></div>
+    <div class="review-copy"><strong>需要注意</strong><p>${escapeHtml(latest.monthlyReview || "还没有填写")}</p></div>
+    <div class="review-copy"><strong>下月唯一重点</strong><p>${escapeHtml(latest.nextFocus || "还没有填写")}</p></div>` : "<p>先完成一条月度记录，再开始复盘。</p>";
 }
 
 function drawChart(history) {
@@ -1563,56 +2024,9 @@ function drawChart(history) {
 }
 
 function renderResults() {
-  const totals = getTotals(state);
-  const base = simulate(state, false);
-  const projected = simulate(state, true);
-  const impact = projected.months - base.months;
   const propertyAgg = getPropertyAggregate();
   const childAgg = getChildAggregate();
-
-  document.querySelector("#etaText").textContent = formatDuration(projected.months);
-  document.querySelector("#etaFormulaText").textContent = state.debtFreeRequired
-    ? "公式：按月模拟，存款/投资 ≥ 目标存款，且总负债 = 0"
-    : "公式：按月模拟，存款/投资 ≥ 目标存款";
-  document.querySelector("#etaDate").textContent = Number.isFinite(projected.months)
-    ? `代入：目标 ${exactMoney(state.targetCash)}；当前资产 ${exactMoney(totals.totalAssets)}；当前负债 ${exactMoney(totals.totalDebt)}；年化收益率 ${toNumber(state.annualReturn)}%；结果 ${completionDate(projected.months)}`
-    : `代入：目标 ${exactMoney(state.targetCash)}；当前资产 ${exactMoney(totals.totalAssets)}；当前负债 ${exactMoney(totals.totalDebt)}；当前条件下模拟期内未达成`;
-  document.querySelector("#gapText").textContent = money(Math.max(0, totals.targetGap));
-  document.querySelector("#monthlySurplusText").textContent = money(totals.monthlySurplus);
-  document.querySelector("#gapFormulaText").textContent = state.debtFreeRequired
-    ? "公式：目标存款 + 总负债 - 当前存款/投资"
-    : "公式：目标存款 - 当前存款/投资";
-  document.querySelector("#gapDetailText").textContent = state.debtFreeRequired
-    ? `代入：${exactMoney(state.targetCash)} + ${exactMoney(totals.totalDebt)} - ${exactMoney(totals.totalAssets)} = ${exactMoney(Math.max(0, totals.targetGap))}`
-    : `代入：${exactMoney(state.targetCash)} - ${exactMoney(totals.totalAssets)} = ${exactMoney(Math.max(0, totals.targetGap))}`;
-  document.querySelector("#monthlySurplusDetailText").textContent =
-    `代入：工资 ${exactMoney(state.salary)} + 副业 ${exactMoney(state.sideIncome)} + 租金 ${exactMoney(totals.details.propertyIncome)}` +
-    ` - 生活 ${exactMoney(state.livingCost)} - 普通房贷 ${exactMoney(state.mortgagePayment)} - 车贷 ${exactMoney(state.carPayment)}` +
-    ` - 固定支出 ${exactMoney(state.fixedCost)} - 房产月供 ${exactMoney(totals.details.propertyMortgage)}` +
-    ` - 房产持有 ${exactMoney(totals.details.propertyHolding)} - 养娃 ${exactMoney(totals.details.childExpense)} = ${exactMoney(totals.monthlySurplus)}`;
-  document.querySelector("#netWorthText").textContent = money(totals.netWorth);
-  document.querySelector("#basePlanText").textContent = `${formatDuration(base.months)} · ${completionDate(base.months)}`;
-  document.querySelector("#netWorthDetailText").textContent = `代入：${exactMoney(state.cash)} + ${exactMoney(state.investments)} - ${exactMoney(totals.totalDebt)} = ${exactMoney(totals.netWorth)}`;
-  document.querySelector("#basePlanDetailText").textContent = `代入：目标 ${exactMoney(state.targetCash)}；资产 ${exactMoney(totals.totalAssets)}；负债 ${exactMoney(totals.totalDebt)}；当前月结余 ${exactMoney(totals.monthlySurplus)}；年化 ${toNumber(state.annualReturn)}%`;
-  const payYourself = totals.monthlyIncome * (state.payYourselfRate / 100);
-  document.querySelector("#payYourselfText").textContent = money(payYourself);
-  document.querySelector("#payYourselfDetailText").textContent = `代入：${exactMoney(totals.monthlyIncome)} × ${toNumber(state.payYourselfRate)}% = ${exactMoney(payYourself)}`;
-  document.querySelector("#propertyProfitText").textContent = propertyAgg.hasSale ? money(propertyAgg.profit) : "未设置";
-  document.querySelector("#propertyBreakEvenText").textContent = propertyAgg.hasSale
-    ? `代入：${propertyAgg.snapshots.filter((item) => item.result.sale.saleEnabled).map((item) => `${item.property.name} ${exactMoney(item.result.sale.profit)}`).join(" + ")} = ${exactMoney(propertyAgg.profit)}`
-    : "代入：没有房产同时填写出售日期和售价，暂不计算";
-  document.querySelector("#childCostText").textContent = money(childAgg.monthly);
-  document.querySelector("#childStartText").textContent = `代入：${childAgg.summaries.map((item) => `${item.child.name} ${exactMoney(item.summary.monthly)}`).join(" + ") || exactMoney(0)} = ${exactMoney(childAgg.monthly)}`;
-
-  let impactText = "无变化";
-  if (Number.isFinite(impact) && impact > 0) impactText = `延后 ${formatDuration(impact)}`;
-  if (Number.isFinite(impact) && impact < 0) impactText = `提前 ${formatDuration(Math.abs(impact))}`;
-  if (!Number.isFinite(projected.months)) impactText = "当前计划无法达成";
-  document.querySelector("#eventImpactText").textContent = impactText;
-  document.querySelector("#eventImpactDetailText").textContent = Number.isFinite(projected.months) && Number.isFinite(base.months)
-    ? `代入：含事件 ${projected.months}个月 - 无事件 ${base.months}个月 = ${impact}个月`
-    : `代入：含事件 ${formatDuration(projected.months)}；无事件 ${formatDuration(base.months)}`;
-  drawChart(projected.history);
+  renderV2Home();
 
   document.querySelectorAll(".property-summary").forEach((summary, index) => {
     const item = propertyAgg.snapshots[index];
@@ -1631,17 +2045,22 @@ function render() {
   renderProperties();
   renderChildren();
   renderEvents();
+  renderMonthlyRecord();
+  renderDreamsV2();
+  renderGooseV2();
+  renderDebtSnapshot();
+  renderReviewV2();
   renderResults();
   activateTab(getActiveTab());
 }
 
 function getActiveTab() {
   const hash = window.location.hash.replace("#", "");
-  return TAB_IDS.includes(hash) ? hash : "result";
+  return TAB_IDS.includes(hash) ? hash : "home";
 }
 
 function activateTab(tabId) {
-  const active = TAB_IDS.includes(tabId) ? tabId : "result";
+  const active = TAB_IDS.includes(tabId) ? tabId : "home";
   document.querySelectorAll(".tab-panel").forEach((panel) => {
     const belongsToActive =
       panel.id === active || panel.dataset.tabGroup === active;
@@ -1656,6 +2075,7 @@ function activateTab(tabId) {
   if (window.location.hash !== `#${active}`) {
     history.replaceState(null, "", `#${active}`);
   }
+  if (active === "home") requestAnimationFrame(() => renderV2Home());
 }
 
 document.querySelectorAll(".steps a").forEach((link) => {
@@ -1667,6 +2087,44 @@ document.querySelectorAll(".steps a").forEach((link) => {
 });
 
 window.addEventListener("hashchange", () => activateTab(getActiveTab()));
+
+document.querySelector("#monthlyRecordMonth")?.addEventListener("change", (event) => {
+  if (state.monthlyRecords.some((item) => item.month === event.target.value)) renderMonthlyRecord();
+});
+
+document.querySelector("#newMonthlyRecordButton")?.addEventListener("click", () => {
+  const month = document.querySelector("#monthlyRecordMonth").value || monthKeyFromDate(new Date());
+  let record = state.monthlyRecords.find((item) => item.month === month);
+  if (!record) {
+    record = createNextMonthlyRecord(month);
+    state.monthlyRecords.push(record);
+    saveStateNow();
+  }
+  renderMonthlyRecord();
+});
+
+document.querySelector("#saveMonthlyRecordButton")?.addEventListener("click", () => {
+  const record = state.monthlyRecords.find((item) => item.month === document.querySelector("#monthlyRecordMonth").value) || getLatestMonthlyRecord();
+  if (record) syncLegacyFromMonthly(record);
+  saveStateNow();
+  render();
+  activateTab("monthly");
+});
+
+document.querySelector("#addDreamButton")?.addEventListener("click", () => {
+  state.dreams.push(createDream({ name: `新梦想 ${state.dreams.length + 1}`, amount: 50000 }));
+  saveStateNow(); renderDreamsV2();
+});
+
+document.querySelector("#addSavingsJarButton")?.addEventListener("click", () => {
+  state.savingsJars.push(createSavingsJar({ name: `储蓄罐 ${state.savingsJars.length + 1}` }));
+  saveStateNow(); renderDreamsV2();
+});
+
+document.querySelector("#addJournalButton")?.addEventListener("click", () => {
+  state.journals.push(createJournal({ content: "" }));
+  saveStateNow(); renderReviewV2();
+});
 
 document.querySelector("#addPropertyButton").addEventListener("click", () => {
   state.properties = Array.isArray(state.properties) ? state.properties : [];

@@ -625,6 +625,137 @@ textarea:focus {
   font-weight: 700;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.action-panel {
+  min-height: 190px;
+}
+
+.action-panel h3,
+.action-panel p {
+  margin-top: 6px;
+}
+
+.action-lines {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+}
+
+.action-lines div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.title-actions input {
+  width: 160px;
+}
+
+.monthly-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.monthly-group {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.monthly-group legend {
+  padding: 0 6px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.monthly-review-fields {
+  grid-column: 1 / -1;
+}
+
+.subsection-title {
+  margin-top: 22px;
+}
+
+.jar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.jar-card {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.progress-track {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #e6eadf;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--sage-dark);
+}
+
+.goose-layout,
+.review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 14px;
+}
+
+.debt-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.debt-strip .insight-box {
+  margin-top: 0;
+}
+
+.journal-card {
+  grid-template-columns: 140px 140px minmax(220px, 1fr) 120px 32px;
+}
+
+.review-summary {
+  align-self: start;
+}
+
+.review-copy {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .icon-button {
   width: 36px;
   padding: 0;
@@ -657,6 +788,11 @@ textarea:focus {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .jar-grid,
+  .debt-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .two-column {
     grid-template-columns: 1fr;
   }
@@ -683,6 +819,12 @@ textarea:focus {
   }
 
   .summary-grid,
+  .dashboard-grid,
+  .monthly-layout,
+  .jar-grid,
+  .goose-layout,
+  .review-grid,
+  .debt-strip,
   .insight-grid,
   .form-grid,
   .event-fields,
@@ -693,6 +835,16 @@ textarea:focus {
   .rent-record,
   .pre-rent-cost-record {
     grid-template-columns: 1fr;
+  }
+
+  .monthly-review-fields {
+    grid-column: auto;
+  }
+
+  .title-actions,
+  .title-actions input,
+  .title-actions button {
+    width: 100%;
   }
 
   .mortgage-period-record,
