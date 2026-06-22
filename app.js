@@ -26,24 +26,16 @@ function createProperty(overrides = {}) {
         startMonth: "2026-02",
         endMonth: "",
         amount: 2600,
-        propertyFee: 0,
-        utilities: 0,
-        maintenance: 0,
-        otherCost: 0,
+        propertyFeePayer: "tenant",
+        utilitiesPayer: "tenant",
         note: "",
       },
     ],
-    preRentCostRecords: [
-      {
-        id: id(),
-        startMonth: "2026-01",
-        endMonth: "2026-01",
-        propertyFee: 300,
-        utilities: 0,
-        maintenance: 0,
-        otherCost: 0,
-      },
+    propertyMonthlyRecords: [
+      { id: id(), month: "2026-01", rentReceived: 0, propertyFee: 300, utilities: 0, maintenance: 0, insuranceTax: 0, otherIncome: 0, otherExpense: 0 },
+      { id: id(), month: monthKeyFromDate(new Date()), rentReceived: 2600, propertyFee: 0, utilities: 0, maintenance: 0, insuranceTax: 0, otherIncome: 0, otherExpense: 0 },
     ],
+    oneTimeExpenses: [],
     mortgagePeriods: [
       {
         id: id(),
@@ -86,7 +78,7 @@ function createCar(overrides = {}) {
       { id: id(), startMonth: "2026-02", endMonth: "2028-10", monthlyPayment: 3000 },
     ],
     operatingCostPeriods: [
-      { id: id(), startMonth: "2026-01", endMonth: "", fuel: 800, insurance: 300, maintenance: 200, parkingTolls: 200, otherCost: 0 },
+      { id: id(), month: "2026-01", fuel: 800, insurance: 300, maintenance: 200, parkingTolls: 200, otherCost: 0 },
     ],
     prepayments: [],
   };
@@ -355,6 +347,7 @@ function normalizeState(saved) {
     }),
     prepayments: saved.propertyPrepayments || [],
   });
+  delete migratedProperty.propertyMonthlyRecords;
 
   const migratedChild = createChild({
     name: "孩子 1",
@@ -448,7 +441,7 @@ function normalizeCar(car, index) {
       ? safeCar.paymentPeriods.map((period) => ({ ...period, id: period.id || id() }))
       : [],
     operatingCostPeriods: Array.isArray(safeCar.operatingCostPeriods)
-      ? safeCar.operatingCostPeriods.map((period) => ({ ...period, id: period.id || id() }))
+      ? safeCar.operatingCostPeriods.map((period) => ({ ...period, id: period.id || id(), month: period.month || period.startMonth || monthKeyFromDate(new Date()) }))
       : [],
     prepayments: Array.isArray(safeCar.prepayments) ? safeCar.prepayments.map((item) => ({ ...item, id: item.id || id() })) : [],
   });
@@ -473,14 +466,44 @@ function normalizeHoldingCostRecord(record = {}, fallback = {}) {
 
 function normalizeRentRecord(record = {}, fallback = {}) {
   return {
-    ...normalizeHoldingCostRecord(record, fallback),
+    id: record.id || id(),
+    startMonth: record.startMonth || fallback.startMonth || dateToMonthInput(new Date()),
+    endMonth: record.endMonth || "",
     amount: record.amount ?? fallback.amount ?? 0,
-    note: cleanInternalNote(record.note),
+    propertyFeePayer: record.propertyFeePayer || (toNumber(record.propertyFee) > 0 ? "owner" : "tenant"),
+    utilitiesPayer: record.utilitiesPayer || (toNumber(record.utilities) > 0 ? "owner" : "tenant"),
   };
 }
 
-function holdingCostFromRecord(record) {
-  return toNumber(record.propertyFee) + toNumber(record.utilities) + toNumber(record.maintenance) + toNumber(record.otherCost);
+function normalizePropertyMonthlyRecord(record = {}) {
+  return {
+    id: record.id || id(),
+    month: record.month || record.startMonth || dateToMonthInput(new Date()),
+    rentReceived: record.rentReceived ?? record.amount ?? 0,
+    propertyFee: record.propertyFee ?? 0,
+    utilities: record.utilities ?? 0,
+    maintenance: record.maintenance ?? 0,
+    insuranceTax: record.insuranceTax ?? 0,
+    otherIncome: record.otherIncome ?? 0,
+    otherExpense: record.otherExpense ?? record.otherCost ?? 0,
+  };
+}
+
+function normalizePropertyOneTimeExpense(record = {}) {
+  return {
+    id: record.id || id(),
+    date: record.date || toDateInputValue(new Date()),
+    category: record.category || "other",
+    amount: record.amount ?? 0,
+  };
+}
+
+function propertyMonthlyExpense(record) {
+  return toNumber(record.propertyFee)
+    + toNumber(record.utilities)
+    + toNumber(record.maintenance)
+    + toNumber(record.insuranceTax)
+    + toNumber(record.otherExpense);
 }
 
 function buildLegacyPreRentCostRecords(property) {
@@ -491,6 +514,40 @@ function buildLegacyPreRentCostRecords(property) {
   const otherCost = property.otherHoldingMonthly ?? property.monthlyCost ?? 0;
   if (toNumber(propertyFee) + toNumber(utilities) + toNumber(maintenance) + toNumber(otherCost) <= 0) return [];
   return [normalizeHoldingCostRecord({}, { startMonth, propertyFee, utilities, maintenance, otherCost })];
+}
+
+function migrateLegacyPropertyMonthlyRecords(property, rentRecords, preRentCostRecords) {
+  const currentMonth = monthKeyFromDate(new Date());
+  const candidates = [
+    dateToMonthInput(property.downPaymentDate),
+    ...rentRecords.map((record) => record.startMonth),
+    ...preRentCostRecords.map((record) => record.startMonth),
+  ].filter(Boolean);
+  if (!candidates.length) return [];
+  const firstMonth = candidates.sort()[0];
+  const monthCount = Math.min(600, Math.max(0, monthIndexFromMonth(firstMonth, currentMonth)) + 1);
+  const validRentRecords = getValidRangeRecords(rentRecords);
+  const validPreRentRecords = getValidRangeRecords(preRentCostRecords);
+  const migrated = [];
+
+  for (let offset = 0; offset < monthCount; offset += 1) {
+    const month = monthKeyFromDate(addMonths(parseMonth(firstMonth), offset));
+    const rentRecord = validRentRecords.find((record) => monthInRange(month, record.startMonth, record.endMonth));
+    const holdingRecords = rentRecord
+      ? [rentRecord]
+      : validPreRentRecords.filter((record) => monthInRange(month, record.startMonth, record.endMonth));
+    const totals = holdingRecords.reduce((sum, record) => ({
+      propertyFee: sum.propertyFee + toNumber(record.propertyFee),
+      utilities: sum.utilities + toNumber(record.utilities),
+      maintenance: sum.maintenance + toNumber(record.maintenance),
+      otherExpense: sum.otherExpense + toNumber(record.otherCost),
+    }), { propertyFee: 0, utilities: 0, maintenance: 0, otherExpense: 0 });
+    const rentReceived = rentRecord ? toNumber(rentRecord.amount) : 0;
+    if (rentReceived > 0 || Object.values(totals).some((value) => value > 0)) {
+      migrated.push(normalizePropertyMonthlyRecord({ month, rentReceived, ...totals }));
+    }
+  }
+  return migrated;
 }
 
 function cleanLoanBalance(value, loanInitial) {
@@ -512,6 +569,22 @@ function normalizeProperty(property, index) {
     computedLoanInitial > 0 && (savedLoanInitial === 0 || savedLoanInitial === 560000 || savedLoanInitial > computedLoanInitial)
       ? computedLoanInitial
       : savedLoanInitial || computedLoanInitial;
+  const normalizedRentRecords = Array.isArray(safeProperty.rentRecords)
+    ? safeProperty.rentRecords.map((item) => normalizeRentRecord(item, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
+    : safeProperty.monthlyRent
+      ? [normalizeRentRecord({}, { startMonth: dateToMonthInput(safeProperty.downPaymentDate), amount: safeProperty.monthlyRent })]
+      : [];
+  const legacyPreRentCostRecords = Array.isArray(safeProperty.preRentCostRecords)
+    ? safeProperty.preRentCostRecords.map((item) => normalizeHoldingCostRecord(item, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
+    : Array.isArray(safeProperty.recurringCostRecords)
+      ? safeProperty.recurringCostRecords.map((item) => normalizeHoldingCostRecord({
+          id: item.id,
+          startMonth: item.startMonth,
+          endMonth: item.endMonth,
+          propertyFee: item.type === "propertyFee" ? item.amount : 0,
+          utilities: item.type === "utilities" ? item.amount : 0,
+        }, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
+      : buildLegacyPreRentCostRecords(safeProperty);
   const normalized = createProperty({
     ...safeProperty,
     name: safeProperty.name || `房产 ${index + 1}`,
@@ -550,28 +623,20 @@ function normalizeProperty(property, index) {
               note: "",
             }]
           : [],
-    rentRecords: Array.isArray(safeProperty.rentRecords)
-      ? safeProperty.rentRecords.map((item) => normalizeRentRecord(item, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
-      : safeProperty.monthlyRent
-        ? [normalizeRentRecord({}, { startMonth: dateToMonthInput(safeProperty.downPaymentDate), amount: safeProperty.monthlyRent })]
-        : [],
-    preRentCostRecords: Array.isArray(safeProperty.preRentCostRecords)
-      ? safeProperty.preRentCostRecords.map((item) => normalizeHoldingCostRecord(item, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
-      : Array.isArray(safeProperty.recurringCostRecords)
-        ? safeProperty.recurringCostRecords.map((item) => normalizeHoldingCostRecord({
-            id: item.id,
-            startMonth: item.startMonth,
-            endMonth: item.endMonth,
-            propertyFee: item.type === "propertyFee" ? item.amount : 0,
-            utilities: item.type === "utilities" ? item.amount : 0,
-          }, { startMonth: dateToMonthInput(safeProperty.downPaymentDate) }))
-        : buildLegacyPreRentCostRecords(safeProperty),
+    rentRecords: normalizedRentRecords,
+    propertyMonthlyRecords: Array.isArray(safeProperty.propertyMonthlyRecords)
+      ? safeProperty.propertyMonthlyRecords.map(normalizePropertyMonthlyRecord)
+      : migrateLegacyPropertyMonthlyRecords(safeProperty, safeProperty.rentRecords || normalizedRentRecords, legacyPreRentCostRecords),
+    oneTimeExpenses: Array.isArray(safeProperty.oneTimeExpenses)
+      ? safeProperty.oneTimeExpenses.map(normalizePropertyOneTimeExpense)
+      : [],
     purchaseFees: safeProperty.purchaseFees ?? safeProperty.otherCost ?? 0,
     prepayments: Array.isArray(safeProperty.prepayments) ? safeProperty.prepayments : [],
     salePlanned: Boolean(safeProperty.salePlanned || (safeProperty.sellDate && safeProperty.sellPrice)),
   });
   normalized.rentRecords = (normalized.rentRecords || []).map((record) => normalizeRentRecord(record, { startMonth: dateToMonthInput(normalized.downPaymentDate) }));
-  normalized.preRentCostRecords = (normalized.preRentCostRecords || []).map((record) => normalizeHoldingCostRecord(record, { startMonth: dateToMonthInput(normalized.downPaymentDate) }));
+  normalized.propertyMonthlyRecords = (normalized.propertyMonthlyRecords || []).map(normalizePropertyMonthlyRecord);
+  normalized.oneTimeExpenses = (normalized.oneTimeExpenses || []).map(normalizePropertyOneTimeExpense);
   normalized.mortgagePeriods = (normalized.mortgagePeriods || []).map((period) => ({
     ...period,
     startBalance: cleanLoanBalance(period.startBalance, normalized.loanInitial),
@@ -829,8 +894,8 @@ function completionDate(months) {
 }
 
 function byDate(a, b) {
-  const aDate = parseDate(a.date) || parseMonth(a.startMonth);
-  const bDate = parseDate(b.date) || parseMonth(b.startMonth);
+  const aDate = parseDate(a.date) || parseMonth(a.startMonth) || parseMonth(a.month);
+  const bDate = parseDate(b.date) || parseMonth(b.startMonth) || parseMonth(b.month);
   return (aDate?.getTime() || 0) - (bDate?.getTime() || 0);
 }
 
@@ -969,8 +1034,8 @@ function carOperatingCostFromRecord(record) {
 }
 
 function getCarOperatingCostForMonth(car, monthKey = monthKeyFromDate(new Date())) {
-  return getValidRangeRecords(car.operatingCostPeriods)
-    .filter((period) => monthInRange(monthKey, period.startMonth, period.endMonth))
+  return (car.operatingCostPeriods || [])
+    .filter((record) => record.month === monthKey)
     .reduce((sum, period) => sum + carOperatingCostFromRecord(period), 0);
 }
 
@@ -979,11 +1044,12 @@ function getCarOperatingCostTotal(car, untilDateValue = new Date()) {
   const startMonth = dateToMonthInput(car.purchaseDate);
   if (!startMonth || !untilDate) return 0;
   const untilMonth = monthKeyFromDate(untilDate);
-  const span = monthIndexFromMonth(startMonth, untilMonth);
-  if (!Number.isFinite(span) || span < 0) return 0;
-  let total = 0;
-  for (let offset = 0; offset <= span; offset += 1) total += getCarOperatingCostForMonth(car, monthKeyFromDate(addMonths(parseMonth(startMonth), offset)));
-  return total;
+  return (car.operatingCostPeriods || []).reduce((sum, record) => {
+    const offsetFromPurchase = monthIndexFromMonth(startMonth, record.month);
+    const offsetFromEnd = monthIndexFromMonth(record.month, untilMonth);
+    if (!Number.isFinite(offsetFromPurchase) || !Number.isFinite(offsetFromEnd) || offsetFromPurchase < 0 || offsetFromEnd < 0) return sum;
+    return sum + carOperatingCostFromRecord(record);
+  }, 0);
 }
 
 function carInsightHtml(car) {
@@ -1050,13 +1116,9 @@ function formatMortgagePeriodMeta(property, period) {
 }
 
 function getMonthlyHoldingCost(property, monthKey = monthKeyFromDate(new Date())) {
-  const rentCost = getValidRangeRecords(property.rentRecords)
-    .filter((record) => monthInRange(monthKey, record.startMonth, record.endMonth))
-    .reduce((sum, record) => sum + holdingCostFromRecord(record), 0);
-  if (rentCost > 0 || isRentedMonth(property, monthKey)) return rentCost;
-  return getValidRangeRecords(property.preRentCostRecords)
-    .filter((record) => monthInRange(monthKey, record.startMonth, record.endMonth))
-    .reduce((sum, record) => sum + holdingCostFromRecord(record), 0);
+  return (property.propertyMonthlyRecords || [])
+    .filter((record) => record.month === monthKey)
+    .reduce((sum, record) => sum + propertyMonthlyExpense(record), 0);
 }
 
 function getHoldingCostTotal(property, months) {
@@ -1068,13 +1130,58 @@ function getHoldingCostTotal(property, months) {
   return total;
 }
 
-function sumRentIncome(property, untilDateValue) {
+function sumRentIncome(property, untilDateValue, { projectFuture = false } = {}) {
   const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
   if (!untilDate) return 0;
   const untilMonth = monthKeyFromDate(untilDate);
-  return getValidRangeRecords(property.rentRecords).reduce((sum, record) => {
-    if (!record.startMonth) return sum;
-    return sum + countMonthlyOccurrences(record.startMonth, record.endMonth, untilMonth) * toNumber(record.amount);
+  const actualTotal = (property.propertyMonthlyRecords || []).reduce((sum, record) => (
+    record.month && record.month <= untilMonth ? sum + toNumber(record.rentReceived) : sum
+  ), 0);
+  if (!projectFuture) return actualTotal;
+  const currentMonth = monthKeyFromDate(new Date());
+  const futureMonths = monthIndexFromMonth(currentMonth, untilMonth);
+  if (!Number.isFinite(futureMonths) || futureMonths <= 0) return actualTotal;
+  let projectedTotal = 0;
+  for (let offset = 1; offset <= futureMonths; offset += 1) {
+    const month = monthKeyFromDate(addMonths(parseMonth(currentMonth), offset));
+    const hasActualRecord = (property.propertyMonthlyRecords || []).some((record) => record.month === month);
+    if (!hasActualRecord) projectedTotal += getExpectedRentForMonth(property, month);
+  }
+  return actualTotal + projectedTotal;
+}
+
+function getExpectedRentForMonth(property, monthKey) {
+  return getValidRangeRecords(property.rentRecords || [])
+    .filter((record) => monthInRange(monthKey, record.startMonth, record.endMonth))
+    .reduce((sum, record) => sum + toNumber(record.amount), 0);
+}
+
+function getSuggestedPropertyRecordMonth(property) {
+  const usedMonths = new Set((property.propertyMonthlyRecords || []).map((record) => record.month).filter(Boolean));
+  let candidate = parseMonth(monthKeyFromDate(new Date()));
+  for (let offset = 0; offset < 600; offset += 1) {
+    const month = monthKeyFromDate(candidate);
+    if (!usedMonths.has(month)) return month;
+    candidate = addMonths(candidate, -1);
+  }
+  return monthKeyFromDate(new Date());
+}
+
+function sumPropertyOtherIncome(property, untilDateValue) {
+  const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
+  if (!untilDate) return 0;
+  const untilMonth = monthKeyFromDate(untilDate);
+  return (property.propertyMonthlyRecords || []).reduce((sum, record) => (
+    record.month && record.month <= untilMonth ? sum + toNumber(record.otherIncome) : sum
+  ), 0);
+}
+
+function sumPropertyOneTimeExpenses(property, untilDateValue) {
+  const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
+  if (!untilDate) return 0;
+  return (property.oneTimeExpenses || []).reduce((sum, record) => {
+    const recordDate = parseDate(record.date);
+    return recordDate && recordDate <= untilDate ? sum + toNumber(record.amount) : sum;
   }, 0);
 }
 
@@ -1087,23 +1194,31 @@ function getPropertySnapshot(property, sellDateValue, sellPrice = property.sellP
   const rawMonths = monthIndexFromDate(property.downPaymentDate, effectiveDate);
   const months = Number.isFinite(rawMonths) ? Math.max(0, rawMonths + 1) : 0;
   const ledger = buildPropertyLedger(property, effectiveDate, { projectFuture: true });
-  const sunkCost = property.downPayment + property.renovation + property.purchaseFees;
-  const holdingCashOut = getHoldingCostTotal(property, months) + ledger.totalPaid;
-  const rentIncome = sumRentIncome(property, effectiveDate);
+  const sunkCost = toNumber(property.downPayment) + toNumber(property.renovation) + toNumber(property.purchaseFees);
+  const holdingCost = getHoldingCostTotal(property, months);
+  const oneTimeExpenseTotal = sumPropertyOneTimeExpenses(property, effectiveDate);
+  const holdingCashOut = holdingCost + oneTimeExpenseTotal + ledger.totalPaid;
+  const rentIncome = sumRentIncome(property, effectiveDate, { projectFuture: effectiveDate > new Date() });
+  const otherIncome = sumPropertyOtherIncome(property, effectiveDate);
+  const operatingIncome = rentIncome + otherIncome;
   const saleEnabled = hasSaleAssumption(property);
   const saleNetCash = saleEnabled ? sellPrice - ledger.balance - toNumber(property.saleCost) : 0;
   const totalOut = sunkCost + holdingCashOut;
-  const totalIn = rentIncome + saleNetCash;
+  const totalIn = operatingIncome + saleNetCash;
   return {
     months,
     saleEnabled,
     remainingLoan: ledger.balance,
     rentIncome,
+    otherIncome,
+    operatingIncome,
+    holdingCost,
+    oneTimeExpenseTotal,
     saleNetCash,
     totalOut,
     totalIn,
     profit: saleEnabled ? totalIn - totalOut : null,
-    cashflowNet: rentIncome - holdingCashOut,
+    cashflowNet: operatingIncome - holdingCashOut,
     ledger,
   };
 }
@@ -1198,9 +1313,9 @@ function getTotals(source) {
   const currentMonth = monthKeyFromDate(new Date());
   const propertyIncome = source.properties.reduce((sum, property) => {
     if (!property.includeInPlan) return sum;
-    const rent = getValidRangeRecords(property.rentRecords)
-      .filter((record) => monthInRange(currentMonth, record.startMonth, record.endMonth))
-      .reduce((recordSum, record) => recordSum + toNumber(record.amount), 0);
+    const rent = (property.propertyMonthlyRecords || [])
+      .filter((record) => record.month === currentMonth)
+      .reduce((recordSum, record) => recordSum + toNumber(record.rentReceived) + toNumber(record.otherIncome), 0);
     return sum + rent;
   }, 0);
   const propertyExpenseBreakdown = source.properties.reduce(
@@ -1399,7 +1514,11 @@ function renderRecordList({ container, templateId, records, onChange, onDelete, 
   container.innerHTML = "";
   const safeRecords = Array.isArray(records) ? records : [];
   const rangeErrors = validateRanges ? getRangeValidation(safeRecords) : new Map();
-  const sortedRecords = sortMode === "monthDesc" ? sortByStartMonthDesc(safeRecords) : [...safeRecords].sort(byDate);
+  const sortedRecords = sortMode === "monthDesc"
+    ? sortByStartMonthDesc(safeRecords)
+    : sortMode === "recordMonthDesc"
+      ? [...safeRecords].sort((a, b) => (parseMonth(b.month)?.getTime() || 0) - (parseMonth(a.month)?.getTime() || 0))
+      : [...safeRecords].sort(byDate);
   sortedRecords.forEach((record) => {
     const node = template.content.firstElementChild.cloneNode(true);
     const recordInputs = [...node.querySelectorAll("[data-record-field]")];
@@ -1459,22 +1578,33 @@ function rentIncomeCalculation(property, untilDateValue) {
   const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
   if (!untilDate) return "无有效截止日期";
   const untilMonth = monthKeyFromDate(untilDate);
-  const parts = getValidRangeRecords(property.rentRecords)
-    .map((record) => {
-      const months = countMonthlyOccurrences(record.startMonth, record.endMonth, untilMonth);
-      return months > 0 ? `${exactMoney(toNumber(record.amount))} × ${months}个月` : "";
-    })
-    .filter(Boolean);
-  return parts.length ? parts.join(" + ") : "无有效租金区间";
+  const records = (property.propertyMonthlyRecords || [])
+    .filter((record) => record.month && record.month <= untilMonth && toNumber(record.rentReceived) > 0)
+    .sort((a, b) => a.month.localeCompare(b.month));
+  const actualText = !records.length
+    ? "暂无实际收到租金记录"
+    : records.length <= 6
+      ? records.map((record) => `${record.month} ${exactMoney(record.rentReceived)}`).join(" + ")
+      : `${records.length}个月实际收到租金逐月求和`;
+  const currentMonth = monthKeyFromDate(new Date());
+  const futureMonths = monthIndexFromMonth(currentMonth, untilMonth);
+  if (!Number.isFinite(futureMonths) || futureMonths <= 0) return actualText;
+  let projected = 0;
+  for (let offset = 1; offset <= futureMonths; offset += 1) {
+    const month = monthKeyFromDate(addMonths(parseMonth(currentMonth), offset));
+    const hasActualRecord = (property.propertyMonthlyRecords || []).some((record) => record.month === month);
+    if (!hasActualRecord) projected += getExpectedRentForMonth(property, month);
+  }
+  return `${actualText} + 未来合同预计 ${exactMoney(projected)}`;
 }
 
 function propertyInsightHtml(property, result, current) {
   const ledger = result.sale.ledger;
   const sunkCost = toNumber(property.downPayment) + toNumber(property.renovation) + toNumber(property.purchaseFees);
-  const holdingCost = Math.max(0, result.sale.totalOut - sunkCost - ledger.totalPaid);
+  const holdingCost = result.sale.holdingCost;
   const rentUntil = result.sale.saleEnabled ? property.sellDate : new Date();
   const rentIncomeLabel = result.sale.saleEnabled
-    ? "累计租金收入（截至出售月，含出售当月）"
+    ? "累计及预计租金收入（截至出售月，含出售当月）"
     : "累计租金收入（截至当前月，含本月）";
   const commonInsights = [
     insight(
@@ -1492,20 +1622,26 @@ function propertyInsightHtml(property, result, current) {
     insight(
       rentIncomeLabel,
       money(result.sale.rentIncome),
-      "Σ（每月租金 × 区间包含月数）",
+      result.sale.saleEnabled ? "Σ 已记录实际租金 + 未来合同预计租金" : "Σ 每月实际收到租金",
       `${rentIncomeCalculation(property, rentUntil)} = ${exactMoney(result.sale.rentIncome)}`,
     ),
+    ...(result.sale.otherIncome > 0 ? [insight(
+      "累计其他房产收入",
+      money(result.sale.otherIncome),
+      "Σ 每月房产实际收支中的其他收入",
+      exactMoney(result.sale.otherIncome),
+    )] : []),
     insight(
       "累计投入",
       money(result.sale.totalOut),
-      "首付 + 装修 + 购房杂费 + 持有支出 + 累计房贷还款",
-      `${exactMoney(property.downPayment)} + ${exactMoney(property.renovation)} + ${exactMoney(property.purchaseFees)} + ${exactMoney(holdingCost)} + ${exactMoney(ledger.totalPaid)} = ${exactMoney(result.sale.totalOut)}`,
+      "首付 + 装修 + 购房杂费 + 月度持有支出 + 一次性房产支出 + 累计房贷还款",
+      `${exactMoney(property.downPayment)} + ${exactMoney(property.renovation)} + ${exactMoney(property.purchaseFees)} + ${exactMoney(holdingCost)} + ${exactMoney(result.sale.oneTimeExpenseTotal)} + ${exactMoney(ledger.totalPaid)} = ${exactMoney(result.sale.totalOut)}`,
     ),
     insight(
       "当前房产现金流净额",
       money(result.sale.cashflowNet),
-      "累计租金 - 持有支出 - 累计房贷还款",
-      `${exactMoney(result.sale.rentIncome)} - ${exactMoney(holdingCost)} - ${exactMoney(ledger.totalPaid)} = ${exactMoney(result.sale.cashflowNet)}`,
+      "累计实际租金 + 其他收入 - 月度持有支出 - 一次性房产支出 - 累计房贷还款",
+      `${exactMoney(result.sale.rentIncome)} + ${exactMoney(result.sale.otherIncome)} - ${exactMoney(holdingCost)} - ${exactMoney(result.sale.oneTimeExpenseTotal)} - ${exactMoney(ledger.totalPaid)} = ${exactMoney(result.sale.cashflowNet)}`,
     ),
   ];
   const saleInsights = result.sale.saleEnabled
@@ -1618,27 +1754,32 @@ function renderProperties() {
         startMonth,
         endMonth: "",
         amount: 0,
-        propertyFee: 0,
-        utilities: 0,
-        maintenance: 0,
-        otherCost: 0,
-        note: "",
+        propertyFeePayer: "tenant",
+        utilitiesPayer: "tenant",
       });
       saveState();
       render();
     });
-    node.querySelector(".add-pre-rent-cost")?.addEventListener("click", () => {
-      property.preRentCostRecords = Array.isArray(property.preRentCostRecords) ? property.preRentCostRecords : [];
-      const startMonth = dateToMonthInput(property.downPaymentDate) || dateToMonthInput(new Date());
-      property.preRentCostRecords.push({
+    node.querySelector(".add-property-monthly-record")?.addEventListener("click", () => {
+      property.propertyMonthlyRecords = Array.isArray(property.propertyMonthlyRecords) ? property.propertyMonthlyRecords : [];
+      const month = getSuggestedPropertyRecordMonth(property);
+      property.propertyMonthlyRecords.push({
         id: id(),
-        startMonth,
-        endMonth: startMonth,
+        month,
+        rentReceived: getExpectedRentForMonth(property, month),
         propertyFee: 0,
         utilities: 0,
         maintenance: 0,
-        otherCost: 0,
+        insuranceTax: 0,
+        otherIncome: 0,
+        otherExpense: 0,
       });
+      saveState();
+      render();
+    });
+    node.querySelector(".add-property-one-time-expense")?.addEventListener("click", () => {
+      property.oneTimeExpenses = Array.isArray(property.oneTimeExpenses) ? property.oneTimeExpenses : [];
+      property.oneTimeExpenses.push(normalizePropertyOneTimeExpense());
       saveState();
       render();
     });
@@ -1681,20 +1822,33 @@ function renderProperties() {
       sortMode: "monthDesc",
     });
     renderRecordList({
-      container: node.querySelector(".pre-rent-cost-list"),
-      templateId: "#preRentCostTemplate",
-      records: property.preRentCostRecords,
+      container: node.querySelector(".property-monthly-record-list"),
+      templateId: "#propertyMonthlyRecordTemplate",
+      records: property.propertyMonthlyRecords,
       onChange: () => {
         saveState();
         scheduleRenderResults();
       },
       onDelete: (recordId) => {
-        property.preRentCostRecords = property.preRentCostRecords.filter((item) => item.id !== recordId);
+        property.propertyMonthlyRecords = property.propertyMonthlyRecords.filter((item) => item.id !== recordId);
         saveState();
         render();
       },
-      validateRanges: true,
-      sortMode: "monthDesc",
+      sortMode: "recordMonthDesc",
+    });
+    renderRecordList({
+      container: node.querySelector(".property-one-time-expense-list"),
+      templateId: "#propertyOneTimeExpenseTemplate",
+      records: property.oneTimeExpenses,
+      onChange: () => {
+        saveState();
+        scheduleRenderResults();
+      },
+      onDelete: (recordId) => {
+        property.oneTimeExpenses = property.oneTimeExpenses.filter((item) => item.id !== recordId);
+        saveState();
+        render();
+      },
     });
     renderRecordList({
       container: node.querySelector(".mortgage-period-list"),
@@ -1778,8 +1932,7 @@ function renderCars() {
       saveStateNow(); renderCars();
     });
     node.querySelector(".add-car-operating-cost").addEventListener("click", () => {
-      const startMonth = getNextAvailableStartMonth(car.operatingCostPeriods) || monthKeyFromDate(new Date());
-      car.operatingCostPeriods.push({ id: id(), startMonth, endMonth: startMonth, fuel: 0, insurance: 0, maintenance: 0, parkingTolls: 0, otherCost: 0 });
+      car.operatingCostPeriods.push({ id: id(), month: monthKeyFromDate(new Date()), fuel: 0, insurance: 0, maintenance: 0, parkingTolls: 0, otherCost: 0 });
       saveStateNow(); renderCars();
     });
     renderRecordList({
@@ -1797,7 +1950,7 @@ function renderCars() {
       container: node.querySelector(".car-operating-cost-list"), templateId: "#carOperatingCostTemplate", records: car.operatingCostPeriods,
       onChange: () => { saveState(); node.querySelector(".car-summary").innerHTML = carInsightHtml(car); renderV2Home(); },
       onDelete: (recordId) => { car.operatingCostPeriods = car.operatingCostPeriods.filter((item) => item.id !== recordId); saveStateNow(); renderCars(); renderV2Home(); },
-      validateRanges: true, sortMode: "monthDesc",
+      sortMode: "recordMonthDesc",
     });
     node.querySelector(".car-summary").innerHTML = carInsightHtml(car);
     list.appendChild(node);
