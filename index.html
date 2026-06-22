@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>财务自由目标规划 Demo</title>
-    <link rel="stylesheet" href="styles.css?v=20260622-6" />
+    <link rel="stylesheet" href="styles.css?v=20260622-7" />
   </head>
   <body>
     <main class="app-shell">
@@ -492,6 +492,9 @@
           <label>购车日期<input data-car-field="purchaseDate" type="date" /></label>
           <label>车辆总价<input data-car-field="price" type="number" min="0" step="10000" /></label>
           <label>首付金额<input data-car-field="downPayment" type="number" min="0" step="1000" /></label>
+          <label>购置税<input data-car-field="purchaseTax" type="number" min="0" step="500" /></label>
+          <label>首年保险<input data-car-field="initialInsurance" type="number" min="0" step="500" /></label>
+          <label>上牌/其他购车支出<input data-car-field="otherPurchaseCost" type="number" min="0" step="500" /></label>
           <label>初始贷款本金<input data-car-field="loanInitial" type="number" min="0" step="1000" /></label>
           <label>贷款类型<select data-car-field="interestType"><option value="interestFree">无息贷款</option><option value="interestBearing">有息贷款</option></select></label>
           <label>车贷年利率 %<input data-car-field="annualRate" type="number" min="0" max="30" step="0.01" /></label>
@@ -500,6 +503,10 @@
         <div class="record-section">
           <div class="record-title"><h4>车贷还款区间</h4><button class="ghost-button add-car-period" type="button">新增还款区间</button></div>
           <div class="record-list car-period-list"></div>
+        </div>
+        <div class="record-section">
+          <div class="record-title"><h4>日常用车支出区间</h4><button class="ghost-button add-car-operating-cost" type="button">新增支出区间</button></div>
+          <div class="record-list car-operating-cost-list"></div>
         </div>
         <div class="record-section">
           <div class="record-title"><h4>提前还车贷</h4><button class="ghost-button add-car-prepayment" type="button">新增提前还款</button></div>
@@ -515,6 +522,19 @@
         <label>结束月份<input data-record-field="endMonth" type="month" /></label>
         <label>每月还款<input data-record-field="monthlyPayment" type="number" min="0" step="100" /></label>
         <button class="icon-button delete-record" type="button" aria-label="删除车贷区间">×</button>
+      </article>
+    </template>
+
+    <template id="carOperatingCostTemplate">
+      <article class="record-card car-operating-record">
+        <label>开始月份<input data-record-field="startMonth" type="month" /></label>
+        <label>结束月份<input data-record-field="endMonth" type="month" /></label>
+        <label>每月油费<input data-record-field="fuel" type="number" min="0" step="100" /></label>
+        <label>每月保险摊销<input data-record-field="insurance" type="number" min="0" step="100" /></label>
+        <label>每月维修保养<input data-record-field="maintenance" type="number" min="0" step="100" /></label>
+        <label>停车/过路费<input data-record-field="parkingTolls" type="number" min="0" step="100" /></label>
+        <label>其他每月支出<input data-record-field="otherCost" type="number" min="0" step="100" /></label>
+        <button class="icon-button delete-record" type="button" aria-label="删除用车支出区间">×</button>
       </article>
     </template>
 
@@ -673,6 +693,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=20260622-6"></script>
+    <script src="app.js?v=20260622-7"></script>
   </body>
 </html>

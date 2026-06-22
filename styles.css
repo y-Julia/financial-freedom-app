@@ -552,7 +552,8 @@ textarea:focus {
 
 .rent-record,
 .pre-rent-cost-record,
-.child-stage-record {
+.child-stage-record,
+.car-operating-record {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -560,7 +561,8 @@ textarea:focus {
 
 .rent-record label,
 .pre-rent-cost-record label,
-.child-stage-record label {
+.child-stage-record label,
+.car-operating-record label {
   flex: 0 0 120px;
 }
 
@@ -573,7 +575,8 @@ textarea:focus {
 
 .rent-record .delete-record,
 .pre-rent-cost-record .delete-record,
-.child-stage-record .delete-record {
+.child-stage-record .delete-record,
+.car-operating-record .delete-record {
   flex: 0 0 32px;
 }
 
@@ -879,7 +882,8 @@ textarea:focus {
   .mortgage-period-record,
   .rent-record,
   .pre-rent-cost-record,
-  .child-stage-record {
+  .child-stage-record,
+  .car-operating-record {
     grid-template-columns: 1fr;
   }
 
@@ -906,7 +910,8 @@ textarea:focus {
   .mortgage-period-record,
   .rent-record,
   .pre-rent-cost-record,
-  .child-stage-record {
+  .child-stage-record,
+  .car-operating-record {
     align-items: stretch;
     flex-direction: column;
   }
@@ -922,7 +927,9 @@ textarea:focus {
   .pre-rent-cost-record label,
   .pre-rent-cost-record .delete-record,
   .child-stage-record label,
-  .child-stage-record .delete-record {
+  .child-stage-record .delete-record,
+  .car-operating-record label,
+  .car-operating-record .delete-record {
     flex-basis: auto;
   }
 

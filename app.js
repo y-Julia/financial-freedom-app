@@ -75,12 +75,18 @@ function createCar(overrides = {}) {
     purchaseDate: "2026-01-01",
     price: 150000,
     downPayment: 50000,
+    purchaseTax: 0,
+    initialInsurance: 0,
+    otherPurchaseCost: 0,
     loanInitial: 100000,
     interestType: "interestFree",
     annualRate: 0,
     includeDebtInHousehold: true,
     paymentPeriods: [
       { id: id(), startMonth: "2026-02", endMonth: "2028-10", monthlyPayment: 3000 },
+    ],
+    operatingCostPeriods: [
+      { id: id(), startMonth: "2026-01", endMonth: "", fuel: 800, insurance: 300, maintenance: 200, parkingTolls: 200, otherCost: 0 },
     ],
     prepayments: [],
   };
@@ -440,6 +446,9 @@ function normalizeCar(car, index) {
     annualRate: safeCar.interestType === "interestFree" ? 0 : toNumber(safeCar.annualRate),
     paymentPeriods: Array.isArray(safeCar.paymentPeriods)
       ? safeCar.paymentPeriods.map((period) => ({ ...period, id: period.id || id() }))
+      : [],
+    operatingCostPeriods: Array.isArray(safeCar.operatingCostPeriods)
+      ? safeCar.operatingCostPeriods.map((period) => ({ ...period, id: period.id || id() }))
       : [],
     prepayments: Array.isArray(safeCar.prepayments) ? safeCar.prepayments.map((item) => ({ ...item, id: item.id || id() })) : [],
   });
@@ -955,14 +964,43 @@ function getCurrentCarPayment(car) {
     .reduce((sum, period) => sum + toNumber(period.monthlyPayment), 0);
 }
 
+function carOperatingCostFromRecord(record) {
+  return toNumber(record.fuel) + toNumber(record.insurance) + toNumber(record.maintenance) + toNumber(record.parkingTolls) + toNumber(record.otherCost);
+}
+
+function getCarOperatingCostForMonth(car, monthKey = monthKeyFromDate(new Date())) {
+  return getValidRangeRecords(car.operatingCostPeriods)
+    .filter((period) => monthInRange(monthKey, period.startMonth, period.endMonth))
+    .reduce((sum, period) => sum + carOperatingCostFromRecord(period), 0);
+}
+
+function getCarOperatingCostTotal(car, untilDateValue = new Date()) {
+  const untilDate = typeof untilDateValue === "string" ? parseDate(untilDateValue) : untilDateValue;
+  const startMonth = dateToMonthInput(car.purchaseDate);
+  if (!startMonth || !untilDate) return 0;
+  const untilMonth = monthKeyFromDate(untilDate);
+  const span = monthIndexFromMonth(startMonth, untilMonth);
+  if (!Number.isFinite(span) || span < 0) return 0;
+  let total = 0;
+  for (let offset = 0; offset <= span; offset += 1) total += getCarOperatingCostForMonth(car, monthKeyFromDate(addMonths(parseMonth(startMonth), offset)));
+  return total;
+}
+
 function carInsightHtml(car) {
   const ledger = buildCarLedger(car, new Date());
   const currentPayment = getCurrentCarPayment(car);
+  const currentOperatingCost = getCarOperatingCostForMonth(car);
+  const operatingCostTotal = getCarOperatingCostTotal(car);
+  const initialInvestment = toNumber(car.downPayment) + toNumber(car.purchaseTax) + toNumber(car.initialInsurance) + toNumber(car.otherPurchaseCost);
+  const totalCashOut = initialInvestment + ledger.totalPaid + operatingCostTotal;
   return [
     insight("当前剩余车贷本金", money(ledger.balance), "初始贷款 - 累计归还本金 - 提前还款", `${exactMoney(car.loanInitial)} - ${exactMoney(ledger.totalPrincipal)} = ${exactMoney(ledger.balance)}`),
     insight("累计已还本金 / 利息", `${money(ledger.totalPrincipal)} / ${money(ledger.totalInterest)}`, car.interestType === "interestFree" ? "无息贷款：每月还款全部冲减本金" : "月利息 = 月初本金 × 年利率 ÷ 12；月本金 = 月供 - 月利息", `${exactMoney(ledger.totalPrincipal)} + ${exactMoney(ledger.totalInterest)} = ${exactMoney(ledger.totalPaid)}`),
     insight("当前月供", money(currentPayment), "读取覆盖当前月份的还款区间", exactMoney(currentPayment)),
-    insight("购车已投入", money(toNumber(car.downPayment) + ledger.totalPaid), "首付 + 累计车贷还款", `${exactMoney(car.downPayment)} + ${exactMoney(ledger.totalPaid)} = ${exactMoney(toNumber(car.downPayment) + ledger.totalPaid)}`),
+    insight("购车初始投入", money(initialInvestment), "首付 + 购置税 + 首年保险 + 上牌/其他购车支出", `${exactMoney(car.downPayment)} + ${exactMoney(car.purchaseTax)} + ${exactMoney(car.initialInsurance)} + ${exactMoney(car.otherPurchaseCost)} = ${exactMoney(initialInvestment)}`),
+    insight("当前月养车支出", money(currentOperatingCost), "油费 + 保险摊销 + 维修保养 + 停车/过路费 + 其他", exactMoney(currentOperatingCost)),
+    insight("累计养车支出", money(operatingCostTotal), "Σ 每个月的日常用车支出", exactMoney(operatingCostTotal)),
+    insight("累计车辆现金流出", money(totalCashOut), "购车初始投入 + 累计车贷还款 + 累计养车支出", `${exactMoney(initialInvestment)} + ${exactMoney(ledger.totalPaid)} + ${exactMoney(operatingCostTotal)} = ${exactMoney(totalCashOut)}`),
   ].join("");
 }
 
@@ -1739,6 +1777,11 @@ function renderCars() {
       car.prepayments.push({ id: id(), date: toDateInputValue(new Date()), amount: 10000 });
       saveStateNow(); renderCars();
     });
+    node.querySelector(".add-car-operating-cost").addEventListener("click", () => {
+      const startMonth = getNextAvailableStartMonth(car.operatingCostPeriods) || monthKeyFromDate(new Date());
+      car.operatingCostPeriods.push({ id: id(), startMonth, endMonth: startMonth, fuel: 0, insurance: 0, maintenance: 0, parkingTolls: 0, otherCost: 0 });
+      saveStateNow(); renderCars();
+    });
     renderRecordList({
       container: node.querySelector(".car-period-list"), templateId: "#carPaymentPeriodTemplate", records: car.paymentPeriods,
       onChange: () => { saveState(); node.querySelector(".car-summary").innerHTML = carInsightHtml(car); renderDebtSnapshot(); renderV2Home(); },
@@ -1749,6 +1792,12 @@ function renderCars() {
       container: node.querySelector(".car-prepayment-list"), templateId: "#prepaymentTemplate", records: car.prepayments,
       onChange: () => { saveState(); node.querySelector(".car-summary").innerHTML = carInsightHtml(car); renderDebtSnapshot(); renderV2Home(); },
       onDelete: (recordId) => { car.prepayments = car.prepayments.filter((item) => item.id !== recordId); saveStateNow(); renderCars(); renderDebtSnapshot(); renderV2Home(); },
+    });
+    renderRecordList({
+      container: node.querySelector(".car-operating-cost-list"), templateId: "#carOperatingCostTemplate", records: car.operatingCostPeriods,
+      onChange: () => { saveState(); node.querySelector(".car-summary").innerHTML = carInsightHtml(car); renderV2Home(); },
+      onDelete: (recordId) => { car.operatingCostPeriods = car.operatingCostPeriods.filter((item) => item.id !== recordId); saveStateNow(); renderCars(); renderV2Home(); },
+      validateRanges: true, sortMode: "monthDesc",
     });
     node.querySelector(".car-summary").innerHTML = carInsightHtml(car);
     list.appendChild(node);
@@ -1891,7 +1940,8 @@ function getMonthlyRecordSummary(record) {
       .reduce((periodSum, period) => periodSum + toNumber(period.monthlyPayment), 0);
   }, 0);
   const vehicleModulePayment = (state.cars || []).reduce((sum, car) => sum + (car.includeDebtInHousehold !== false ? getCurrentCarPayment(car) : 0), 0);
-  const fixedExpenses = propertyModulePayment + toNumber(record.mortgagePayment) + vehicleModulePayment + toNumber(record.carLoanPayment) + toNumber(record.rentPayment) + toNumber(record.insurancePayment) + toNumber(record.fixedOtherPayment);
+  const vehicleOperatingCost = (state.cars || []).reduce((sum, car) => sum + getCarOperatingCostForMonth(car, currentMonth), 0);
+  const fixedExpenses = propertyModulePayment + toNumber(record.mortgagePayment) + vehicleModulePayment + toNumber(record.carLoanPayment) + vehicleOperatingCost + toNumber(record.rentPayment) + toNumber(record.insurancePayment) + toNumber(record.fixedOtherPayment);
   const afterBillsSavable = totalIncome - lastBills - fixedExpenses;
   const payFirstSavable = toNumber(record.salaryIncome) * (toNumber(state.payYourselfRate) / 100);
   const savable = state.savingMode === "payFirst" ? payFirstSavable : afterBillsSavable;
@@ -1911,7 +1961,7 @@ function getMonthlyRecordSummary(record) {
   const netWorth = totalAssets - totalDebt;
   const targetGap = Math.max(0, toNumber(state.targetCash) + (state.debtFreeRequired ? totalDebt : 0) - totalAssets);
   const etaMonths = savable > 0 ? Math.ceil(targetGap / savable) : Infinity;
-  return { totalIncome, lastBills, fixedExpenses, propertyModulePayment, vehicleModulePayment, afterBillsSavable, payFirstSavable, savable, actuallySaved, nextBills, billChange, totalAssets, propertyMortgageDebt, otherMortgageDebt, vehicleLoanDebt, otherCarDebt, totalDebt, netWorth, targetGap, etaMonths };
+  return { totalIncome, lastBills, fixedExpenses, propertyModulePayment, vehicleModulePayment, vehicleOperatingCost, afterBillsSavable, payFirstSavable, savable, actuallySaved, nextBills, billChange, totalAssets, propertyMortgageDebt, otherMortgageDebt, vehicleLoanDebt, otherCarDebt, totalDebt, netWorth, targetGap, etaMonths };
 }
 
 function syncLegacyFromMonthly(record) {
@@ -1984,7 +2034,7 @@ function renderMonthlySummary(record) {
   container.innerHTML = [
     insight("总收入", money(result.totalIncome), "工资 + 副业 + 房租 + 其他收入", `${exactMoney(record.salaryIncome)} + ${exactMoney(record.sideIncome)} + ${exactMoney(record.rentIncome)} + ${exactMoney(record.otherIncome)} = ${exactMoney(result.totalIncome)}`),
     insight("上月账单合计", money(result.lastBills), "信用卡 + 花呗 + 其他上月账单", `${exactMoney(record.lastCreditCardBill)} + ${exactMoney(record.lastHuabeiBill)} + ${exactMoney(record.otherLastBill)} = ${exactMoney(result.lastBills)}`),
-    insight("固定支出合计", money(result.fixedExpenses), "房产月供 + 其他房贷 + 车辆月供 + 其他车贷 + 房租 + 保险固定缴费 + 其他", `${exactMoney(result.propertyModulePayment)} + ${exactMoney(record.mortgagePayment)} + ${exactMoney(result.vehicleModulePayment)} + ${exactMoney(record.carLoanPayment)} + ${exactMoney(record.rentPayment)} + ${exactMoney(record.insurancePayment)} + ${exactMoney(record.fixedOtherPayment)} = ${exactMoney(result.fixedExpenses)}`),
+    insight("固定支出合计", money(result.fixedExpenses), "房产月供 + 其他房贷 + 车辆月供 + 其他车贷 + 日常养车 + 房租 + 保险固定缴费 + 其他", `${exactMoney(result.propertyModulePayment)} + ${exactMoney(record.mortgagePayment)} + ${exactMoney(result.vehicleModulePayment)} + ${exactMoney(record.carLoanPayment)} + ${exactMoney(result.vehicleOperatingCost)} + ${exactMoney(record.rentPayment)} + ${exactMoney(record.insurancePayment)} + ${exactMoney(record.fixedOtherPayment)} = ${exactMoney(result.fixedExpenses)}`),
     insight(
       state.savingMode === "payFirst" ? "本月建议先存" : "本月可存金额",
       money(result.savable),
